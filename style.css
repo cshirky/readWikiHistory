@@ -151,7 +151,7 @@ th { position: sticky; top: 0; background: var(--surface-1); color: var(--text-s
 .users { font-size: 13px; }
 .u-row {
   display: grid;
-  grid-template-columns: 2.5em minmax(8em, 15em) minmax(80px, 1fr) 9.5em 9.5em;
+  grid-template-columns: 32px minmax(110px, 200px) 84px 84px 96px minmax(80px, 1fr);
   align-items: center; column-gap: 12px;
   padding: 3px 4px; border-radius: 6px;
 }
@@ -170,8 +170,8 @@ th { position: sticky; top: 0; background: var(--surface-1); color: var(--text-s
 
 @media (max-width: 720px) {
   .u-row {
-    grid-template-columns: 2em minmax(0, 1fr) minmax(0, 1fr);
-    grid-template-areas: "rank name bar" "rank first last";
+    grid-template-columns: 28px repeat(3, minmax(0, 1fr));
+    grid-template-areas: "rank name name name" "rank first last dur" "rank bar bar bar";
     row-gap: 1px; padding: 5px 2px;
   }
   .u-rank { grid-area: rank; align-self: start; }
@@ -179,19 +179,22 @@ th { position: sticky; top: 0; background: var(--surface-1); color: var(--text-s
   .u-barcell { grid-area: bar; }
   .u-first { grid-area: first; }
   .u-last { grid-area: last; }
+  .u-dur { grid-area: dur; font-size: 11.5px; }
+  .u-header { display: none; } /* the sort buttons cover it on small screens */
   .u-date { font-size: 11.5px; }
-  .u-header .u-first::before { content: ""; }
   .chart-wrap { height: 240px; }
   .card { padding: 14px 12px 12px; }
 }
 
 /* ---------- user marks */
-:root { --bot-text: #c2410c; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bot-text: #f0915f; } }
-:root[data-theme="dark"] { --bot-text: #f0915f; }
+:root { --bot-text: #c2410c; --recent-text: #1c5cab; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bot-text: #f0915f; --recent-text: #6da7ec; } }
+:root[data-theme="dark"] { --bot-text: #f0915f; --recent-text: #6da7ec; }
 .u-bot, .u-name a.u-bot { color: var(--bot-text); }
 .u-record { font-weight: 700; }
 .u-top, .u-name a.u-top { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; }
 #users-stats b { font-weight: 600; color: var(--text-secondary); }
 .users-end { text-align: center; margin: 10px 0 0; }
 .sort-controls { flex-wrap: wrap; }
+.u-recent, .u-name a.u-recent { color: var(--recent-text); }
+.u-dur { font-variant-numeric: tabular-nums; color: var(--text-secondary); white-space: nowrap; }

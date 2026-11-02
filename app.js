@@ -1,12 +1,13 @@
 import {
   GRANULARITIES, SORTS, HIDDEN_USER, parsePageInput, fetchRevisions, buildTimeline, buildUsers, sortUsers,
   autoGranularity, estimateBins, addUnits, floorTo, fmtPeriod, fmtDate, fmtDateTime, fmtInt, timelineCsv, usersCsv,
-  fetchBotUsers, BOT_NAME, editStats, recordHolders, topUsers,
+  fetchBotUsers, BOT_NAME, editStats, recordHolders, topUsers, editDuration, fmtDuration,
 } from './lib/core.js';
 
 const MAX_BINS = 4000;   // granularities that would exceed this are disabled
 const AUTO_BINS = 300;   // "Auto" picks the finest unit at or under this
 const USER_BATCH = 150;  // user rows added per infinite-scroll step
+const RECENT_MS = 7 * 864e5; // names turn blue if the user edited within this window
 
 const $ = id => document.getElementById(id);
 const el = {
@@ -110,7 +111,7 @@ function renderAll() {
   state.hover = -1;
 
   // summary
-  const all = revisions.filter(r => !r.seed);
+  const all = revisions;
   const editors = new Set(all.map(r => r.user ?? HIDDEN_USER)).size;
   el.pageLink.textContent = page.title;
   el.pageLink.href = `https://${page.lang}.wikipedia.org/wiki/${encodeURIComponent(page.title.replace(/ /g, '_'))}`;
@@ -526,6 +527,7 @@ el.usersCsv.onclick = () => download(`${slug()}-edits-per-user.csv`, usersCsv(us
 const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 // Rows are added in batches as the list scrolls into view.
+const isRecent = u => !u.hidden && Date.now() - u.last <= RECENT_MS;
 const ulist = { shown: 0, max: 1, records: new Set(), timeSort: false };
 
 function renderUsers() {
@@ -546,6 +548,7 @@ function renderUsers() {
     key.push(`<span class="u-record">Bold</span>: most edits of anyone up to that ${when}`);
     if (users.some(u => allTimeTop.has(u.user))) key.push('<span class="u-top">Underlined</span>: most edits of all time');
   }
+  if (users.some(isRecent)) key.push('<span class="u-recent">Blue</span>: edited in the last 7 days');
   if (anyBots) key.push('<span class="u-bot">Orange</span>: bot account');
   el.usersKey.innerHTML = key.join(' · ');
   el.usersKey.hidden = !key.length;
@@ -556,9 +559,10 @@ function renderUsers() {
     <div class="u-row u-header" role="row">
       <span class="u-rank" role="columnheader">#</span>
       <span class="u-name" role="columnheader">User</span>
+      <span class="u-date u-first ${head('first')}" role="columnheader" style="cursor:pointer">First edit</span>
+      <span class="u-date u-last ${head('last')}" role="columnheader" style="cursor:pointer">Last edit</span>
+      <span class="u-dur" role="columnheader">Duration</span>
       <span class="u-barcell ${head('edits')}" role="columnheader" style="cursor:pointer">Edits</span>
-      <span class="u-date u-first ${head('first')}" role="columnheader" style="cursor:pointer">First edit (UTC)</span>
-      <span class="u-date u-last ${head('last')}" role="columnheader" style="cursor:pointer">Last edit (UTC)</span>
     </div>`;
   el.users.querySelectorAll('[data-sort]').forEach(h => (h.onclick = () => setSort(h.dataset.sort)));
   appendUsers();
@@ -567,7 +571,9 @@ function renderUsers() {
 function userRow(u, i) {
   const { bots, allTimeTop, page } = state.data;
   const cls = ['u-link'];
-  if (bots.has(u.user)) cls.push('u-bot');
+  // Blue (recent) wins over orange (bot); the "bot" tag still marks the account type.
+  if (isRecent(u)) cls.push('u-recent');
+  else if (bots.has(u.user)) cls.push('u-bot');
   if (ulist.records.has(u.user)) cls.push('u-record');
   if (ulist.timeSort && allTimeTop.has(u.user)) cls.push('u-top');
   const tags = (u.anon ? '<span class="u-tag">IP</span>' : '') + (bots.has(u.user) ? '<span class="u-tag">bot</span>' : '');
@@ -577,9 +583,10 @@ function userRow(u, i) {
   return `<div class="u-row" role="row">
     <span class="u-rank" role="cell">${i + 1}</span>
     <span class="u-name" role="cell">${name}</span>
+    <span class="u-date u-first" role="cell" title="First edit">${fmtDate(u.first)}</span>
+    <span class="u-date u-last" role="cell" title="Last edit">${fmtDate(u.last)}</span>
+    <span class="u-dur" role="cell" title="Time from first to last edit, rounded up to whole days">${fmtDuration(editDuration(u.first, u.last))}</span>
     <span class="u-barcell" role="cell"><span class="u-bar" style="width:calc((100% - 3.5em) * ${u.edits / ulist.max})"></span><span class="u-count">${fmtInt(u.edits)}</span></span>
-    <span class="u-date u-first" role="cell" title="First edit (UTC)">${fmtDateTime(u.first)}</span>
-    <span class="u-date u-last" role="cell" title="Last edit (UTC)">${fmtDateTime(u.last)}</span>
   </div>`;
 }
 

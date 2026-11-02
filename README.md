@@ -7,8 +7,8 @@ Edit history of a Wikipedia page, shown two ways:
 2. **Edits per user**: a bar chart of each editor's total edits, with the time of their first and
    last edit. You can sort it by total edits (the default), first edit, or last edit.
 
-It comes as a static web page (GitHub Pages ready) and a Node command-line tool. Both use the same
-data code in `lib/core.js`. There are no dependencies and no build step. Data comes live from the
+It's a static web page with no dependencies and no build step. The page code is in `app.js` and the
+data code is in `lib/core.js`. Data comes live from the
 [MediaWiki revisions API](https://www.mediawiki.org/wiki/API:Revisions). All times are UTC.
 
 ## Web page
@@ -23,8 +23,11 @@ npm run serve            # python3 -m http.server 8000
   most 300 columns. A unit that would need more than 4,000 columns is greyed out until you narrow the range.
 - **Zoom:** drag across either chart to select a range, or click a column to zoom into that
   period. You can also set the From/To fields. **Full history** resets the range.
+- The per-user list has columns for user, first edit, last edit, duration and edits. Duration is the
+  time from first to last edit in years, months and days, rounded up to a whole day; a single edit
+  counts as 1 day. Names are blue if the user edited in the last 7 days.
 - The per-user list loads more rows as you scroll. Its header shows the mean, median and mode of
-  edits per editor. Bot accounts are shown in orange and tagged "bot". A bot is an account in
+  edits per editor. Bot accounts are shown in orange (blue wins if they edited recently) and tagged "bot". A bot is an account in
   Wikipedia's bot group, or any name ending in "bot".
 - When the list is sorted by first or last edit, a name is **bold** if that user set a new high for
   total edits up to that point. Ties don't count as a new high. The user or users with the most
@@ -39,22 +42,6 @@ npm run serve            # python3 -m http.server 8000
 
 Push this directory to a repo, then go to Settings → Pages → *Deploy from branch* → `main` / root.
 Nothing needs to be built.
-
-## Command line
-
-Requires Node 18+.
-
-```sh
-node cli/readWikiHistory.js "Clay Shirky"
-node cli/readWikiHistory.js https://en.wikipedia.org/wiki/Ada_Lovelace -g year
-node cli/readWikiHistory.js "Ada Lovelace" -s 2015-12 -e 2015-12 -g day --sort first -n all
-node cli/readWikiHistory.js "Ada Lovelace" --json > ada.json
-node cli/readWikiHistory.js "Ada Lovelace" --csv out/      # writes out/timeline.csv, out/users.csv
-npm link   # optional: installs a `readWikiHistory` command
-```
-
-Run `--help` for every option. When you pass `--start`, the CLI fetches only that range. It also
-fetches one revision from just before the start, so the byte count is right from the first period.
 
 ## Notes
 
