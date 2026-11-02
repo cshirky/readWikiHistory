@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wikipedia Edit History</title>
+  <meta name="description" content="Edit timeline and per-user edit counts for a Wikipedia page.">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <main class="viz-root">
+    <header class="masthead">
+      <h1>Wikipedia edit history</h1>
+      <form id="page-form" class="page-form" autocomplete="off">
+        <label class="field grow">
+          <span>Page title or URL</span>
+          <input id="page-input" type="text" placeholder="e.g. Ada Lovelace" required>
+        </label>
+        <label class="field lang">
+          <span>Wiki</span>
+          <input id="lang-input" type="text" value="en" size="4" pattern="[a-z0-9\-]+" title="Language code, e.g. en, de, fr">
+        </label>
+        <button type="submit" id="load-btn">Load history</button>
+      </form>
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+    </header>
+
+    <section id="results" hidden>
+      <div class="summary">
+        <h2><a id="page-link" target="_blank" rel="noopener"></a></h2>
+        <p id="summary-line" class="muted"></p>
+      </div>
+
+      <div class="controls" role="toolbar" aria-label="Timeline controls">
+        <div class="seg" id="gran-seg" role="radiogroup" aria-label="Granularity"></div>
+        <label class="field compact">
+          <span>From (UTC)</span>
+          <input id="start-input" type="datetime-local">
+        </label>
+        <label class="field compact">
+          <span>To (UTC)</span>
+          <input id="end-input" type="datetime-local">
+        </label>
+        <button type="button" id="reset-btn" class="ghost">Full history</button>
+      </div>
+
+      <figure class="card">
+        <figcaption>
+          <h3 id="tl-title">Edits</h3>
+          <p class="muted small">Drag across the chart to zoom to a range · click a column to zoom into that period</p>
+        </figcaption>
+        <div class="chart-wrap" id="tl-wrap">
+          <canvas id="tl-canvas" aria-label="Column chart of edits per period"></canvas>
+          <div class="brush" id="tl-brush" hidden></div>
+          <div class="tooltip" id="tl-tip" hidden></div>
+        </div>
+        <h4 class="strip-title">Page size at end of period <span class="muted">(bytes)</span></h4>
+        <div class="chart-wrap strip" id="bytes-wrap">
+          <canvas id="bytes-canvas" aria-label="Page size in bytes at end of each period"></canvas>
+        </div>
+        <details class="table-view">
+          <summary>Table: edits and byte count per period</summary>
+          <div class="table-actions"><button type="button" class="ghost small" id="tl-csv">Download CSV</button></div>
+          <div class="table-scroll"><table id="tl-table"></table></div>
+        </details>
+      </figure>
+
+      <figure class="card">
+        <figcaption class="users-head">
+          <div>
+            <h3>Edits per user</h3>
+            <p class="muted small" id="users-sub"></p>
+          </div>
+          <div class="sort-controls">
+            <span class="muted small">Sort by</span>
+            <div class="seg" id="sort-seg" role="radiogroup" aria-label="Sort users by"></div>
+            <button type="button" class="ghost icon" id="dir-btn" aria-label="Reverse sort direction"></button>
+          </div>
+        </figcaption>
+        <div class="users" id="users" role="table" aria-label="Edits per user"></div>
+        <div class="table-actions">
+          <button type="button" class="ghost small" id="more-btn" hidden></button>
+          <button type="button" class="ghost small" id="users-csv">Download CSV</button>
+        </div>
+      </figure>
+    </section>
+
+    <footer class="foot muted small">
+      Data from the <a href="https://www.mediawiki.org/wiki/API:Revisions" target="_blank" rel="noopener">MediaWiki revisions API</a>, fetched live in your browser. All times UTC.
+      Also available as a command-line tool — see the README.
+    </footer>
+  </main>
+</body>
+</html>
