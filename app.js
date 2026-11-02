@@ -1,11 +1,12 @@
 import {
   GRANULARITIES, SORTS, HIDDEN_USER, parsePageInput, fetchRevisions, buildTimeline, buildUsers, sortUsers,
   autoGranularity, estimateBins, addUnits, floorTo, fmtPeriod, fmtDate, fmtDateTime, fmtInt, timelineCsv, usersCsv,
+  fetchBotUsers, BOT_NAME, editStats, recordHolders, topUsers,
 } from './lib/core.js';
 
 const MAX_BINS = 4000;   // granularities that would exceed this are disabled
 const AUTO_BINS = 300;   // "Auto" picks the finest unit at or under this
-const USER_PAGE = 100;   // users shown before "Show more"
+const USER_BATCH = 150;  // user rows added per infinite-scroll step
 
 const $ = id => document.getElementById(id);
 const el = {
@@ -16,7 +17,7 @@ const el = {
   bytesWrap: $('bytes-wrap'), bytesCanvas: $('bytes-canvas'),
   tlTable: $('tl-table'), tlCsv: $('tl-csv'), tableView: document.querySelector('.table-view'),
   users: $('users'), usersSub: $('users-sub'), sortSeg: $('sort-seg'), dirBtn: $('dir-btn'),
-  more: $('more-btn'), usersCsv: $('users-csv'),
+  usersStats: $('users-stats'), usersKey: $('users-key'), usersEnd: $('users-end'), usersCsv: $('users-csv'),
 };
 
 const state = {
@@ -25,7 +26,6 @@ const state = {
   start: null, end: null, // null = full history
   gran: 'auto',
   sort: 'edits', dir: null,
-  userLimit: USER_PAGE,
   hover: -1,
 };
 let tl = null;         // current timeline { granularity, start, end, bins }
@@ -54,6 +54,16 @@ async function load(title, lang, initial) {
     });
     if (ctrl.signal.aborted) return;
     if (!data.revisions.length) throw new Error('That page has no visible revisions.');
+    setStatus('Checking for bot accounts…');
+    const names = [...new Set(data.revisions.map(r => r.user).filter(Boolean))];
+    try {
+      data.bots = await fetchBotUsers(names, { lang, signal: ctrl.signal });
+    } catch (err) {
+      if (err.name === 'AbortError') throw err;
+      data.bots = new Set(names.filter(n => BOT_NAME.test(n))); // fall back to the name rule
+    }
+    data.allTimeTop = topUsers(buildUsers(data.revisions));
+    if (ctrl.signal.aborted) return;
     state.data = data;
     state.fullStart = data.page.created ?? data.revisions[0].ts;
     state.fullEnd = Date.now();
@@ -62,7 +72,6 @@ async function load(title, lang, initial) {
     state.gran = initial.gran ?? 'auto';
     state.sort = initial.sort ?? 'edits';
     state.dir = initial.dir ?? null;
-    state.userLimit = USER_PAGE;
     el.page.value = data.page.title;
     setStatus('');
     el.results.hidden = false;
@@ -516,24 +525,33 @@ el.usersCsv.onclick = () => download(`${slug()}-edits-per-user.csv`, usersCsv(us
 
 const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
+// Rows are added in batches as the list scrolls into view.
+const ulist = { shown: 0, max: 1, records: new Set(), timeSort: false };
+
 function renderUsers() {
-  const max = Math.max(1, ...users.map(u => u.edits));
-  const shown = users.slice(0, state.userLimit);
-  const lang = state.data.page.lang;
+  const { bots, allTimeTop } = state.data;
+  ulist.shown = 0;
+  ulist.max = users.reduce((m, u) => Math.max(m, u.edits), 1);
+  ulist.timeSort = state.sort !== 'edits';
+  ulist.records = ulist.timeSort ? recordHolders(users, state.sort) : new Set();
+
+  const s = editStats(users);
+  const num = v => (Number.isInteger(v) ? fmtInt(v) : v.toFixed(1));
+  el.usersStats.innerHTML = `Edits per editor: <b>mean</b> ${num(s.mean)} · <b>median</b> ${num(s.median)} · <b>mode</b> ${num(s.mode)}`;
+
+  const anyBots = users.some(u => bots.has(u.user));
+  const key = [];
+  if (ulist.timeSort) {
+    const when = state.sort === 'first' ? 'first edit' : 'last edit';
+    key.push(`<span class="u-record">Bold</span>: most edits of anyone up to that ${when}`);
+    if (users.some(u => allTimeTop.has(u.user))) key.push('<span class="u-top">Underlined</span>: most edits of all time');
+  }
+  if (anyBots) key.push('<span class="u-bot">Orange</span>: bot account');
+  el.usersKey.innerHTML = key.join(' · ');
+  el.usersKey.hidden = !key.length;
+
   const arrow = dirArrow();
-  const head = key => `${state.sort === key ? 'sorted' : ''}" data-arrow="${arrow}" data-sort="${key}`;
-  const rows = shown.map((u, i) => {
-    const name = u.hidden
-      ? `<span class="muted">${HIDDEN_USER}</span>`
-      : `<a href="https://${lang}.wikipedia.org/wiki/Special:Contributions/${encodeURIComponent(u.user)}" target="_blank" rel="noopener" title="${esc(u.user)}">${esc(u.user)}</a>${u.anon ? '<span class="u-tag">IP</span>' : ''}`;
-    return `<div class="u-row" role="row">
-      <span class="u-rank" role="cell">${i + 1}</span>
-      <span class="u-name" role="cell">${name}</span>
-      <span class="u-barcell" role="cell"><span class="u-bar" style="width:calc((100% - 3.5em) * ${u.edits / max})"></span><span class="u-count">${fmtInt(u.edits)}</span></span>
-      <span class="u-date u-first" role="cell" title="First edit (UTC)">${fmtDateTime(u.first)}</span>
-      <span class="u-date u-last" role="cell" title="Last edit (UTC)">${fmtDateTime(u.last)}</span>
-    </div>`;
-  });
+  const head = k => `${state.sort === k ? 'sorted' : ''}" data-arrow="${arrow}" data-sort="${k}`;
   el.users.innerHTML = `
     <div class="u-row u-header" role="row">
       <span class="u-rank" role="columnheader">#</span>
@@ -541,13 +559,46 @@ function renderUsers() {
       <span class="u-barcell ${head('edits')}" role="columnheader" style="cursor:pointer">Edits</span>
       <span class="u-date u-first ${head('first')}" role="columnheader" style="cursor:pointer">First edit (UTC)</span>
       <span class="u-date u-last ${head('last')}" role="columnheader" style="cursor:pointer">Last edit (UTC)</span>
-    </div>${rows.join('')}`;
+    </div>`;
   el.users.querySelectorAll('[data-sort]').forEach(h => (h.onclick = () => setSort(h.dataset.sort)));
-  const rest = users.length - shown.length;
-  el.more.hidden = rest <= 0;
-  el.more.textContent = `Show ${fmtInt(Math.min(rest, 500))} more (${fmtInt(rest)} not shown)`;
+  appendUsers();
 }
-el.more.onclick = () => { state.userLimit += 500; renderUsers(); };
+
+function userRow(u, i) {
+  const { bots, allTimeTop, page } = state.data;
+  const cls = ['u-link'];
+  if (bots.has(u.user)) cls.push('u-bot');
+  if (ulist.records.has(u.user)) cls.push('u-record');
+  if (ulist.timeSort && allTimeTop.has(u.user)) cls.push('u-top');
+  const tags = (u.anon ? '<span class="u-tag">IP</span>' : '') + (bots.has(u.user) ? '<span class="u-tag">bot</span>' : '');
+  const name = u.hidden
+    ? `<span class="muted">${HIDDEN_USER}</span>`
+    : `<a class="${cls.join(' ')}" href="https://${page.lang}.wikipedia.org/wiki/Special:Contributions/${encodeURIComponent(u.user)}" target="_blank" rel="noopener" title="${esc(u.user)}">${esc(u.user)}</a>${tags}`;
+  return `<div class="u-row" role="row">
+    <span class="u-rank" role="cell">${i + 1}</span>
+    <span class="u-name" role="cell">${name}</span>
+    <span class="u-barcell" role="cell"><span class="u-bar" style="width:calc((100% - 3.5em) * ${u.edits / ulist.max})"></span><span class="u-count">${fmtInt(u.edits)}</span></span>
+    <span class="u-date u-first" role="cell" title="First edit (UTC)">${fmtDateTime(u.first)}</span>
+    <span class="u-date u-last" role="cell" title="Last edit (UTC)">${fmtDateTime(u.last)}</span>
+  </div>`;
+}
+
+function appendUsers() {
+  const batch = users.slice(ulist.shown, ulist.shown + USER_BATCH);
+  el.users.insertAdjacentHTML('beforeend', batch.map((u, j) => userRow(u, ulist.shown + j)).join(''));
+  ulist.shown += batch.length;
+  el.usersEnd.textContent = ulist.shown < users.length
+    ? `Showing ${fmtInt(ulist.shown)} of ${fmtInt(users.length)} — scroll for more`
+    : `All ${fmtInt(users.length)} editors shown`;
+  // The observer only fires on changes, so keep filling while the end marker is still in view.
+  requestAnimationFrame(() => {
+    if (ulist.shown < users.length && el.usersEnd.getBoundingClientRect().top < innerHeight + 800) appendUsers();
+  });
+}
+
+new IntersectionObserver(entries => {
+  if (entries[0].isIntersecting && state.data && ulist.shown < users.length) appendUsers();
+}, { rootMargin: '800px 0px' }).observe(el.usersEnd);
 
 // ------------------------------------------------------------------ URL state
 

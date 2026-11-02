@@ -71,18 +71,18 @@
           <div>
             <h3>Edits per user</h3>
             <p class="muted small" id="users-sub"></p>
+            <p class="small" id="users-stats"></p>
+            <p class="muted small" id="users-key" hidden></p>
           </div>
           <div class="sort-controls">
             <span class="muted small">Sort by</span>
             <div class="seg" id="sort-seg" role="radiogroup" aria-label="Sort users by"></div>
             <button type="button" class="ghost icon" id="dir-btn" aria-label="Reverse sort direction"></button>
+            <button type="button" class="ghost small" id="users-csv">Download CSV</button>
           </div>
         </figcaption>
         <div class="users" id="users" role="table" aria-label="Edits per user"></div>
-        <div class="table-actions">
-          <button type="button" class="ghost small" id="more-btn" hidden></button>
-          <button type="button" class="ghost small" id="users-csv">Download CSV</button>
-        </div>
+        <p class="users-end muted small" id="users-end" aria-live="polite"></p>
       </figure>
     </section>
 

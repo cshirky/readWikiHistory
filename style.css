@@ -184,3 +184,14 @@ th { position: sticky; top: 0; background: var(--surface-1); color: var(--text-s
   .chart-wrap { height: 240px; }
   .card { padding: 14px 12px 12px; }
 }
+
+/* ---------- user marks */
+:root { --bot-text: #c2410c; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bot-text: #f0915f; } }
+:root[data-theme="dark"] { --bot-text: #f0915f; }
+.u-bot, .u-name a.u-bot { color: var(--bot-text); }
+.u-record { font-weight: 700; }
+.u-top, .u-name a.u-top { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; }
+#users-stats b { font-weight: 600; color: var(--text-secondary); }
+.users-end { text-align: center; margin: 10px 0 0; }
+.sort-controls { flex-wrap: wrap; }

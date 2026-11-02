@@ -23,6 +23,12 @@ npm run serve            # python3 -m http.server 8000
   most 300 columns. A unit that would need more than 4,000 columns is greyed out until you narrow the range.
 - **Zoom:** drag across either chart to select a range, or click a column to zoom into that
   period. You can also set the From/To fields. **Full history** resets the range.
+- The per-user list loads more rows as you scroll. Its header shows the mean, median and mode of
+  edits per editor. Bot accounts are shown in orange and tagged "bot". A bot is an account in
+  Wikipedia's bot group, or any name ending in "bot".
+- When the list is sorted by first or last edit, a name is **bold** if that user set a new high for
+  total edits up to that point. Ties don't count as a new high. The user or users with the most
+  edits in the page's whole history are underlined.
 - The per-user chart follows the selected range. Click a column header or the sort buttons to sort.
   Click the active sort again (or ↑/↓) to reverse the order.
 - The page URL keeps your settings (`?page=…&lang=…&from=…&to=…&g=…&sort=…&dir=…`), so a link
