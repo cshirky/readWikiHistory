@@ -32,7 +32,7 @@ npm run serve            # python3 -m http.server 8000
 - When the list is sorted by first or last edit, a name is **bold** if that user set a new high for
   total edits up to that point. Ties don't count as a new high. The user or users with the most
   edits in the page's whole history are underlined.
-- The per-user chart follows the selected range. Click a column header or the sort buttons to sort.
+- The per-user chart follows the selected range. Click a column header or the sort buttons to sort by total edits, first edit, last edit or duration.
   Click the active sort again (or ↑/↓) to reverse the order.
 - The page URL keeps your settings (`?page=…&lang=…&from=…&to=…&g=…&sort=…&dir=…`), so a link
   reopens the same view.

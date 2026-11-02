@@ -177,7 +177,9 @@ const curDir = () => state.dir || SORTS[state.sort].defaultDir;
 const dirArrow = () => (curDir() === 'asc' ? '↑' : '↓');
 function dirLabel() {
   const asc = curDir() === 'asc';
-  return state.sort === 'edits' ? (asc ? 'Fewest first' : 'Most first') : (asc ? 'Oldest first' : 'Newest first');
+  if (state.sort === 'edits') return asc ? 'Fewest first' : 'Most first';
+  if (state.sort === 'duration') return asc ? 'Shortest first' : 'Longest first';
+  return asc ? 'Oldest first' : 'Newest first';
 }
 
 function setSort(key) {
@@ -534,7 +536,7 @@ function renderUsers() {
   const { bots, allTimeTop } = state.data;
   ulist.shown = 0;
   ulist.max = users.reduce((m, u) => Math.max(m, u.edits), 1);
-  ulist.timeSort = state.sort !== 'edits';
+  ulist.timeSort = state.sort === 'first' || state.sort === 'last'; // bold/underline apply to date sorts only
   ulist.records = ulist.timeSort ? recordHolders(users, state.sort) : new Set();
 
   const s = editStats(users);
@@ -561,7 +563,7 @@ function renderUsers() {
       <span class="u-name" role="columnheader">User</span>
       <span class="u-date u-first ${head('first')}" role="columnheader" style="cursor:pointer">First edit</span>
       <span class="u-date u-last ${head('last')}" role="columnheader" style="cursor:pointer">Last edit</span>
-      <span class="u-dur" role="columnheader">Duration</span>
+      <span class="u-dur ${head('duration')}" role="columnheader" style="cursor:pointer">Duration</span>
       <span class="u-barcell ${head('edits')}" role="columnheader" style="cursor:pointer">Edits</span>
     </div>`;
   el.users.querySelectorAll('[data-sort]').forEach(h => (h.onclick = () => setSort(h.dataset.sort)));
