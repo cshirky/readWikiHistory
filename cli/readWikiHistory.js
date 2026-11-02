@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Command-line front end. Usage: node cli/wikihistory.js --help
+// Command-line front end. Usage: node cli/readWikiHistory.js --help
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -7,12 +7,12 @@ import {
   autoGranularity, estimateBins, parseUtc, fmtPeriod, fmtDateTime, fmtDate, fmtInt, timelineCsv, usersCsv,
 } from '../lib/core.js';
 
-const USER_AGENT = 'wikihistory/0.1 (https://github.com/cshirky/readWikiHistory)';
+const USER_AGENT = 'readWikiHistory/0.1 (https://github.com/cshirky/readWikiHistory)';
 
-const HELP = `wikihistory — edit timeline and per-user edit counts for a Wikipedia page
+const HELP = `readWikiHistory — edit timeline and per-user edit counts for a Wikipedia page
 
 Usage:
-  wikihistory <page title or URL> [options]
+  readWikiHistory <page title or URL> [options]
 
 Options:
   -l, --lang <code>        Wikipedia language edition (default: en, or taken from a URL)
@@ -31,9 +31,9 @@ Defaults: the range runs from page creation to now; auto granularity picks the f
 unit that gives at most 120 periods. All times are UTC.
 
 Examples:
-  wikihistory "Clay Shirky"
-  wikihistory https://en.wikipedia.org/wiki/Ada_Lovelace -g year
-  wikihistory "Ada Lovelace" -s 2015-12 -e 2015-12 -g day --sort first -n all
+  readWikiHistory "Clay Shirky"
+  readWikiHistory https://en.wikipedia.org/wiki/Ada_Lovelace -g year
+  readWikiHistory "Ada Lovelace" -s 2015-12 -e 2015-12 -g day --sort first -n all
 `;
 
 function parseArgs(argv) {
@@ -173,6 +173,6 @@ const pageUrl = p => `https://${p.lang}.wikipedia.org/wiki/${encodeURIComponent(
 
 main().catch(err => {
   if (process.stderr.isTTY) process.stderr.write('\r\x1b[K');
-  process.stderr.write(`wikihistory: ${err.message}\n`);
+  process.stderr.write(`readWikiHistory: ${err.message}\n`);
   process.exit(1);
 });

@@ -1,10 +1,10 @@
 {
-  "name": "wikihistory",
+  "name": "readwikihistory",
   "version": "0.1.0",
   "description": "Edit timeline and per-user edit counts for Wikipedia pages — CLI and static web page",
   "type": "module",
   "bin": {
-    "wikihistory": "cli/wikihistory.js"
+    "readWikiHistory": "cli/readWikiHistory.js"
   },
   "scripts": {
     "serve": "python3 -m http.server 8000"

@@ -1,4 +1,4 @@
-# wikihistory
+# readWikiHistory
 
 Edit history of a Wikipedia page, shown two ways:
 
@@ -39,12 +39,12 @@ Nothing needs to be built.
 Requires Node 18+.
 
 ```sh
-node cli/wikihistory.js "Clay Shirky"
-node cli/wikihistory.js https://en.wikipedia.org/wiki/Ada_Lovelace -g year
-node cli/wikihistory.js "Ada Lovelace" -s 2015-12 -e 2015-12 -g day --sort first -n all
-node cli/wikihistory.js "Ada Lovelace" --json > ada.json
-node cli/wikihistory.js "Ada Lovelace" --csv out/      # writes out/timeline.csv, out/users.csv
-npm link   # optional: installs a `wikihistory` command
+node cli/readWikiHistory.js "Clay Shirky"
+node cli/readWikiHistory.js https://en.wikipedia.org/wiki/Ada_Lovelace -g year
+node cli/readWikiHistory.js "Ada Lovelace" -s 2015-12 -e 2015-12 -g day --sort first -n all
+node cli/readWikiHistory.js "Ada Lovelace" --json > ada.json
+node cli/readWikiHistory.js "Ada Lovelace" --csv out/      # writes out/timeline.csv, out/users.csv
+npm link   # optional: installs a `readWikiHistory` command
 ```
 
 Run `--help` for every option. When you pass `--start`, the CLI fetches only that range. It also
