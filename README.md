@@ -3,7 +3,7 @@
 Edit history of a Wikipedia page, shown two ways:
 
 1. **Edit timeline**: a column chart of edits per hour, day, week, month, or year, with the page's
-   byte count at the end of every period.
+   approximate word count (bytes ÷ 6) at the end of every period.
 2. **Edits per user**: a bar chart of each editor's total edits, with the time of their first and
    last edit. You can sort it by total edits (the default), first edit, or last edit.
 
@@ -57,7 +57,8 @@ Nothing needs to be built.
 ## Notes
 
 - Bin boundaries are UTC. Weeks start on Monday.
-- "Bytes at end" is the page size after the last revision at or before the end of the period. It carries
+- "~Word count at end" is the page size in bytes, divided by 6, after the last revision at or before
+  the end of the period. It's rough: wikitext markup and references count toward the bytes. It carries
   forward through periods with no edits.
 - Editors with suppressed usernames are grouped as "(username hidden)". IP editors are tagged.
 - Very heavily edited pages (50k+ revisions) take a while to load. The API returns 500 revisions per

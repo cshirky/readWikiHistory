@@ -56,12 +56,12 @@
           <div class="brush" id="tl-brush" hidden></div>
           <div class="tooltip" id="tl-tip" hidden></div>
         </div>
-        <h4 class="strip-title">Page size at end of period <span class="muted">(bytes)</span></h4>
+        <h4 class="strip-title">~Word count at end of period <span class="muted">(bytes ÷ 6)</span></h4>
         <div class="chart-wrap strip" id="bytes-wrap">
-          <canvas id="bytes-canvas" aria-label="Page size in bytes at end of each period"></canvas>
+          <canvas id="bytes-canvas" aria-label="Approximate word count at end of each period"></canvas>
         </div>
         <details class="table-view">
-          <summary>Table: edits and byte count per period</summary>
+          <summary>Table: edits and ~word count per period</summary>
           <div class="table-actions"><button type="button" class="ghost small" id="tl-csv">Download CSV</button></div>
           <div class="table-scroll"><table id="tl-table"></table></div>
         </details>

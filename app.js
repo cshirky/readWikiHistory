@@ -1,7 +1,7 @@
 import {
   GRANULARITIES, SORTS, HIDDEN_USER, parsePageInput, fetchRevisions, buildTimeline, buildUsers, sortUsers,
   autoGranularity, estimateBins, addUnits, floorTo, fmtPeriod, fmtDate, fmtInt, timelineCsv, usersCsv, toCsv,
-  fetchBotUsers, BOT_NAME, fmtYearsDays, WIKIPEDIA_LAUNCH, resolvePage, editorBreakdown, editStats, recordHolders, topUsers, editDuration, fmtDuration,
+  fetchBotUsers, BOT_NAME, fmtElapsed, approxWords, WIKIPEDIA_LAUNCH, resolvePage, editorBreakdown, editStats, recordHolders, topUsers, editDuration, fmtDuration,
 } from './lib/core.js';
 
 const MAX_BINS = 4000;   // granularities that would exceed this are disabled
@@ -296,9 +296,9 @@ function renderSummary() {
     ].filter(Boolean).join(' · ');
     const line2 = [
       `Created ${fmtDate(created)}`,
-      `${fmtYearsDays(WIKIPEDIA_LAUNCH, created)} after Wikipedia launched`,
-      `${fmtYearsDays(created, Date.now())} ago`,
-      `current size ${fmtInt(revisions.at(-1).size)} bytes`,
+      `${fmtElapsed(WIKIPEDIA_LAUNCH, created)} after Wikipedia launched`,
+      `${fmtElapsed(created, Date.now())} ago`,
+      `current ~word count ${fmtInt(approxWords(revisions.at(-1).size))}`,
     ].join(' · ');
     return `<div class="summary-page">
       <h2>${multi ? `<span class="swatch" style="background:var(--page-${color + 1})"></span>` : ''}<a href="${pageUrl(page)}" target="_blank" rel="noopener">${esc(page.title)}</a></h2>
@@ -540,7 +540,7 @@ function drawBytes() {
   const top = 10, bottom = 4;
   const h = height - top - bottom;
   const n = tl.series.length;
-  const vals = tl.series.flatMap(bins => bins.map(b => b.bytes)).filter(v => v != null);
+  const vals = tl.series.flatMap(bins => bins.map(b => b.words)).filter(v => v != null);
   const ys = niceScale(vals.reduce((m, v) => Math.max(m, v), 0), 2);
   const y = v => top + h - (v / ys.max) * h;
   ctx.font = `11px ${css('--font')}`;
@@ -560,9 +560,9 @@ function drawBytes() {
     const segs = [];
     let cur = null;
     for (const b of bins) {
-      if (b.bytes == null) { cur = null; continue; }
+      if (b.words == null) { cur = null; continue; }
       if (!cur) segs.push((cur = []));
-      cur.push([sx.x(b.start), y(b.bytes)], [sx.x(b.end), y(b.bytes)]);
+      cur.push([sx.x(b.start), y(b.words)], [sx.x(b.end), y(b.words)]);
     }
     for (const pts of segs) {
       if (n === 1) {
@@ -590,7 +590,7 @@ function drawBytes() {
     ctx.fillStyle = css('--hover-band');
     ctx.fillRect(sx.x(b.start), top, Math.max(1, sx.x(b.end) - sx.x(b.start)), h);
     tl.series.forEach((bins, k) => {
-      const v = bins[state.hover].bytes;
+      const v = bins[state.hover].words;
       if (v == null) return;
       ctx.beginPath();
       ctx.arc(cx, y(v), 4, 0, Math.PI * 2);
@@ -633,7 +633,7 @@ function setHover(i, clientX, clientY) {
     ['IP addresses', x => fmtInt(x.ips), true],
     ['hidden usernames', x => fmtInt(x.hidden), true],
     ['Avg edits per editor', perEditor],
-    ['Bytes at end', x => fmtInt(x.bytes)],
+    ['~Word count at end', x => fmtInt(x.words)],
   ];
   let body;
   if (tl.series.length === 1) {
@@ -723,10 +723,10 @@ const perEditor = b => (b.editors ? (b.edits / b.editors).toFixed(1) : '—');
 
 function renderTable() {
   const multi = tl.series.length > 1;
-  const cols = b => `<td>${fmtInt(b.edits)}</td><td>${fmtInt(b.editors)}</td><td>${perEditor(b)}</td><td>${fmtInt(b.bytes)}</td>`;
+  const cols = b => `<td>${fmtInt(b.edits)}</td><td>${fmtInt(b.editors)}</td><td>${perEditor(b)}</td><td>${fmtInt(b.words)}</td>`;
   const rows = tl.bins.map((b, i) =>
     `<tr><td>${fmtPeriod(b.start, tl.granularity)}</td>${tl.series.map(bins => cols(bins[i])).join('')}</tr>`);
-  const sub = '<th>Edits</th><th>Editors</th><th>Edits per editor</th><th>Bytes at end</th>';
+  const sub = '<th>Edits</th><th>Editors</th><th>Edits per editor</th><th>~Word count at end</th>';
   const head = multi
     ? `<tr><th></th>${state.pages.map(p => `<th colspan="4" class="t-page"><span class="swatch" style="background:var(--page-${p.color + 1})"></span>${esc(p.page.title)}</th>`).join('')}</tr>
        <tr><th>Period (UTC)</th>${state.pages.map(() => sub).join('')}</tr>`
@@ -735,11 +735,11 @@ function renderTable() {
 }
 
 function comparisonCsv() {
-  const cols = ['edits', 'editors', 'bot_editors', 'ip_editors', 'hidden_name_editors', 'bytes_at_end'];
+  const cols = ['edits', 'editors', 'bot_editors', 'ip_editors', 'hidden_name_editors', 'approx_word_count_at_end'];
   return toCsv([
     ['period_start_utc', 'period', ...state.pages.flatMap(p => cols.map(c => `${p.page.title}: ${c}`))],
     ...tl.bins.map((b, i) => [new Date(b.start).toISOString(), fmtPeriod(b.start, tl.granularity),
-      ...tl.series.flatMap(bins => { const x = bins[i]; return [x.edits, x.editors, x.bots, x.ips, x.hidden, x.bytes]; })]),
+      ...tl.series.flatMap(bins => { const x = bins[i]; return [x.edits, x.editors, x.bots, x.ips, x.hidden, x.words]; })]),
   ]);
 }
 
