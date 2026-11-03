@@ -437,6 +437,8 @@ function setHover(i, clientX, clientY) {
   el.tip.innerHTML = `
     <div class="t-head">${fmtPeriod(b.start, tl.granularity)}</div>
     <div class="t-row"><span>Edits</span><span>${fmtInt(b.edits)}</span></div>
+    <div class="t-row"><span>Editors</span><span>${fmtInt(b.editors)}</span></div>
+    <div class="t-row"><span>Avg edits per editor</span><span>${perEditor(b)}</span></div>
     <div class="t-row"><span>Bytes at end</span><span>${fmtInt(b.bytes)}</span></div>
     ${canZoom ? '<div class="t-hint">Click to zoom into this period</div>' : ''}`;
   el.tip.hidden = false;
@@ -507,10 +509,12 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => tl &
 
 el.tableView.addEventListener('toggle', () => el.tableView.open && renderTable());
 
+const perEditor = b => (b.editors ? (b.edits / b.editors).toFixed(1) : '—');
+
 function renderTable() {
   const rows = tl.bins.map(b =>
-    `<tr><td>${fmtPeriod(b.start, tl.granularity)}</td><td>${fmtInt(b.edits)}</td><td>${fmtInt(b.bytes)}</td></tr>`);
-  el.tlTable.innerHTML = `<thead><tr><th>Period (UTC)</th><th>Edits</th><th>Bytes at end</th></tr></thead><tbody>${rows.join('')}</tbody>`;
+    `<tr><td>${fmtPeriod(b.start, tl.granularity)}</td><td>${fmtInt(b.edits)}</td><td>${fmtInt(b.editors)}</td><td>${perEditor(b)}</td><td>${fmtInt(b.bytes)}</td></tr>`);
+  el.tlTable.innerHTML = `<thead><tr><th>Period (UTC)</th><th>Edits</th><th>Editors</th><th>Edits per editor</th><th>Bytes at end</th></tr></thead><tbody>${rows.join('')}</tbody>`;
 }
 
 function download(name, text) {
