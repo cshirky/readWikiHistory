@@ -17,7 +17,7 @@ const el = {
   results: $('results'), summary: $('summary'),
   granSeg: $('gran-seg'), start: $('start-input'), end: $('end-input'), reset: $('reset-btn'),
   tlTitle: $('tl-title'), tlLegend: $('tl-legend'), tlWrap: $('tl-wrap'), tlCanvas: $('tl-canvas'), brush: $('tl-brush'), tip: $('tl-tip'),
-  bytesWrap: $('bytes-wrap'), bytesCanvas: $('bytes-canvas'),
+  wordsWrap: $('words-wrap'), wordsCanvas: $('words-canvas'),
   tlTable: $('tl-table'), tlCsv: $('tl-csv'), tableView: document.querySelector('.table-view'),
   anchorSeg: $('anchor-seg'), anchorLabel: $('anchor-label'), usersNote: $('users-note'), users: $('users'), usersSub: $('users-sub'), sortSeg: $('sort-seg'), dirBtn: $('dir-btn'),
   usersStats: $('users-stats'), usersKey: $('users-key'), usersEnd: $('users-end'), usersCsv: $('users-csv'),
@@ -477,7 +477,7 @@ function timeTicks(sx) {
 
 function drawCharts() {
   drawTimeline();
-  drawBytes();
+  drawWords();
 }
 
 function drawTimeline() {
@@ -563,8 +563,8 @@ function drawTimeline() {
   }
 }
 
-function drawBytes() {
-  const { ctx, width, height } = setupCanvas(el.bytesCanvas);
+function drawWords() {
+  const { ctx, width, height } = setupCanvas(el.wordsCanvas);
   const sx = xScale(width);
   const top = 10, bottom = 4;
   const h = height - top - bottom;
@@ -693,7 +693,7 @@ el.tlWrap.closest('.card').style.position = 'relative';
 el.tlWrap.closest('.card').appendChild(el.tip);
 
 let drag = null;
-for (const canvas of [el.tlCanvas, el.bytesCanvas]) {
+for (const canvas of [el.tlCanvas, el.wordsCanvas]) {
   canvas.addEventListener('pointerdown', e => {
     if (!tl || e.button !== 0) return;
     drag = { canvas, x0: e.clientX, moved: false };
