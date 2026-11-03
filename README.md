@@ -22,7 +22,14 @@ npm run serve            # python3 -m http.server 8000
 - If the title is a disambiguation page (e.g. "Mercury"), a dropdown lists the articles it links to,
   grouped by the page's own section headings. The disambiguation page itself is the last option.
   If no page has that title, the dropdown lists search results instead.
-- By default the range runs from page creation to now. **Auto** picks the finest unit that gives at
+- **Compare pages:** "Compare another page" and "Compare two other pages" add search boxes, up to
+  three pages in all. Each page has a fixed colour: page 1 blue, page 2 orange, page 3 aqua. The
+  column chart groups the pages' columns side by side in each period. The page-size chart draws one
+  line per page. The rollover compares the pages in columns. Auto granularity divides its column
+  budget by the number of pages, so it picks a coarser unit when comparing. The per-user chart still
+  shows page 1 only. Each search box gets its own disambiguation dropdown.
+- By default the range runs from page creation to now. When comparing, it runs from the earliest
+  page's creation. **Auto** picks the finest unit that gives at
   most 300 columns. A unit that would need more than 4,000 columns is greyed out until you narrow the range.
 - **Zoom:** drag across either chart to select a range, or click a column to zoom into that
   period. You can also set the From/To fields. **Full history** resets the range.

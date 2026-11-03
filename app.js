@@ -1,66 +1,144 @@
 import {
   GRANULARITIES, SORTS, HIDDEN_USER, parsePageInput, fetchRevisions, buildTimeline, buildUsers, sortUsers,
-  autoGranularity, estimateBins, addUnits, floorTo, fmtPeriod, fmtDate, fmtDateTime, fmtInt, timelineCsv, usersCsv,
+  autoGranularity, estimateBins, addUnits, floorTo, fmtPeriod, fmtDate, fmtInt, timelineCsv, usersCsv, toCsv,
   fetchBotUsers, BOT_NAME, fmtYearsDays, WIKIPEDIA_LAUNCH, resolvePage, editorBreakdown, editStats, recordHolders, topUsers, editDuration, fmtDuration,
 } from './lib/core.js';
 
 const MAX_BINS = 4000;   // granularities that would exceed this are disabled
-const AUTO_BINS = 300;   // "Auto" picks the finest unit at or under this
+const AUTO_BINS = 300;   // "Auto" picks the finest unit at or under this (divided by the number of pages)
 const USER_BATCH = 150;  // user rows added per infinite-scroll step
 const RECENT_MS = 7 * 864e5; // names turn blue if the user edited within this window
+const MAX_PAGES = 3;
 
 const $ = id => document.getElementById(id);
 const el = {
-  form: $('page-form'), page: $('page-input'), lang: $('lang-input'), load: $('load-btn'), status: $('status'),
-  chooser: $('chooser'), chooserMsg: $('chooser-msg'), chooserSelect: $('chooser-select'),
-  results: $('results'), pageLink: $('page-link'), summary: $('summary-line'), summary2: $('summary-line-2'),
+  form: $('page-form'), slots: $('slots'), addOne: $('add-one'), addTwo: $('add-two'),
+  lang: $('lang-input'), load: $('load-btn'), status: $('status'),
+  results: $('results'), summary: $('summary'),
   granSeg: $('gran-seg'), start: $('start-input'), end: $('end-input'), reset: $('reset-btn'),
-  tlTitle: $('tl-title'), tlWrap: $('tl-wrap'), tlCanvas: $('tl-canvas'), brush: $('tl-brush'), tip: $('tl-tip'),
+  tlTitle: $('tl-title'), tlLegend: $('tl-legend'), tlWrap: $('tl-wrap'), tlCanvas: $('tl-canvas'), brush: $('tl-brush'), tip: $('tl-tip'),
   bytesWrap: $('bytes-wrap'), bytesCanvas: $('bytes-canvas'),
   tlTable: $('tl-table'), tlCsv: $('tl-csv'), tableView: document.querySelector('.table-view'),
-  users: $('users'), usersSub: $('users-sub'), sortSeg: $('sort-seg'), dirBtn: $('dir-btn'),
+  usersNote: $('users-note'), users: $('users'), usersSub: $('users-sub'), sortSeg: $('sort-seg'), dirBtn: $('dir-btn'),
   usersStats: $('users-stats'), usersKey: $('users-key'), usersEnd: $('users-end'), usersCsv: $('users-csv'),
 };
 
 const state = {
-  data: null,          // { page, revisions }
+  pages: [],           // loaded pages: { page, revisions, bots, allTimeTop, color }
+  get data() { return this.pages[0]; }, // the per-user chart shows page 1 for now
   fullStart: 0, fullEnd: 0,
   start: null, end: null, // null = full history
   gran: 'auto',
   sort: 'edits', dir: null,
   hover: -1,
 };
-let tl = null;         // current timeline { granularity, start, end, bins }
-let users = [];        // current sorted users
+let tl = null;         // current timeline { granularity, start, end, bins, series: [bins per page] }
+let users = [];        // current sorted users (page 1)
 let loadCtrl = null;
 
-// ------------------------------------------------------------------ loading
-
 const BASE_TITLE = document.title;
+const pageColor = k => css(`--page-${k + 1}`);
+
+// ------------------------------------------------------------------ search boxes
+
+// One slot per search box: its input, its disambiguation chooser, and the title it resolved to.
+const slots = [];
+
+function addSlot(value = '') {
+  if (slots.length >= MAX_PAGES) return null;
+  const k = slots.length;
+  const wrap = document.createElement('div');
+  wrap.className = 'slot-wrap';
+  wrap.innerHTML = `
+    <div class="slot">
+      <span class="swatch" style="background:var(--page-${k + 1})" aria-hidden="true"></span>
+      <label class="field grow">
+        <span class="slot-label"></span>
+        <input type="text" placeholder="${k ? 'Another page to compare' : 'e.g. Ada Lovelace'}" ${k ? '' : 'required'}>
+      </label>
+      ${k ? `<button type="button" class="ghost icon remove" aria-label="Remove page ${k + 1}" title="Remove this page">×</button>` : '<span class="remove-spacer" hidden></span>'}
+    </div>
+    <div class="chooser" hidden>
+      <label class="chooser-msg"></label>
+      <select></select>
+    </div>`;
+  el.slots.append(wrap);
+  const slot = {
+    wrap, input: wrap.querySelector('input'), chooser: wrap.querySelector('.chooser'),
+    chooserMsg: wrap.querySelector('.chooser-msg'), select: wrap.querySelector('select'), resolved: null,
+  };
+  slot.chooserMsg.htmlFor = slot.select.id = `chooser-${k}`;
+  slot.input.value = value;
+  slot.input.addEventListener('input', () => { slot.resolved = null; });
+  wrap.querySelector('.remove')?.addEventListener('click', () => removeSlot(slot));
+  slots.push(slot);
+  updateSlotUi();
+  return slot;
+}
+
+function removeSlot(slot) {
+  slots.splice(slots.indexOf(slot), 1);
+  slot.wrap.remove();
+  // Re-number the remaining boxes so colours stay in order: blue, then orange, then aqua.
+  slots.forEach((s, k) => {
+    s.wrap.querySelector('.swatch').style.background = `var(--page-${k + 1})`;
+    s.wrap.querySelector('.remove')?.setAttribute('aria-label', `Remove page ${k + 1}`);
+  });
+  updateSlotUi();
+  if (!el.results.hidden) lookupAll({ keepView: true }); // histories are cached, so this is quick
+}
+
+function updateSlotUi() {
+  const multi = slots.length > 1;
+  el.form.classList.toggle('multi', multi);
+  slots[0]?.wrap.querySelector('.remove-spacer')?.toggleAttribute('hidden', !multi);
+  slots.forEach((s, k) => {
+    s.wrap.querySelector('.slot-label').textContent = multi ? `Page ${k + 1}` : 'Page title or URL';
+  });
+  el.addOne.hidden = slots.length >= MAX_PAGES;
+  el.addTwo.hidden = slots.length > 1;
+}
+
+el.lang.addEventListener('input', () => slots.forEach(s => { s.resolved = null; }));
+el.addOne.onclick = () => addSlot()?.input.focus();
+el.addTwo.onclick = () => { const s = addSlot(); addSlot(); s?.input.focus(); };
 
 el.form.addEventListener('submit', e => {
   e.preventDefault();
-  const { lang, title } = parsePageInput(el.page.value, el.lang.value.trim() || 'en');
-  if (!title) return;
-  el.lang.value = lang;
-  lookup(title, lang, {});
+  lookupAll({});
 });
 
-// Check whether the title is a disambiguation page (or missing) before fetching its history.
-async function lookup(title, lang, initial) {
+// Check each title (disambiguation page? missing?) before fetching any history.
+async function lookupAll(initial) {
   loadCtrl?.abort();
   const ctrl = (loadCtrl = new AbortController());
-  el.chooser.hidden = true;
-  setStatus(`Looking up “${title}”…`);
+  const defaultLang = el.lang.value.trim() || 'en';
+  const active = slots.filter(s => s.input.value.trim());
+  if (!active.length) return;
+  setStatus('Looking up…');
   el.load.disabled = true;
   try {
-    const res = await resolvePage(title, { lang, signal: ctrl.signal });
+    await Promise.all(active.map(async s => {
+      if (s.resolved) return;
+      const { lang, title } = parsePageInput(s.input.value, defaultLang);
+      const res = await resolvePage(title, { lang, signal: ctrl.signal });
+      if (res.status === 'ok') {
+        s.resolved = { title: res.title, lang };
+        s.chooser.hidden = true;
+        return;
+      }
+      if (!res.options.length) throw new Error(`No page titled “${title}” on ${lang}.wikipedia.org, and no search results.`);
+      showChooser(s, res, lang);
+    }));
     if (ctrl.signal.aborted) return;
-    if (res.status === 'ok') return load(res.title, lang, initial);
-    if (!res.options.length) throw new Error(`No page titled “${title}” on ${lang}.wikipedia.org, and no search results.`);
-    showChooser(res, lang);
-    el.results.hidden = true;
-    setStatus('');
+    const waiting = active.filter(s => !s.resolved);
+    if (waiting.length) {
+      document.title = `${waiting.map(s => s.input.value.trim()).join(', ')} (choose a page) · ${BASE_TITLE}`;
+      el.results.hidden = true;
+      setStatus(waiting.length === active.length && active.length === 1 ? '' : 'Choose from the list above to continue.');
+      return;
+    }
+    await loadAll(ctrl, initial);
   } catch (err) {
     if (err.name !== 'AbortError') setStatus(err.message, true);
   } finally {
@@ -68,10 +146,9 @@ async function lookup(title, lang, initial) {
   }
 }
 
-function showChooser(res, lang) {
-  document.title = `${res.title} (choose a page) · ${BASE_TITLE}`;
-  const sel = el.chooserSelect;
-  el.chooserMsg.textContent = res.status === 'disambiguation'
+function showChooser(slot, res, lang) {
+  const sel = slot.select;
+  slot.chooserMsg.textContent = res.status === 'disambiguation'
     ? `“${res.title}” could mean several things. Choose an article:`
     : `There's no page titled “${res.title}”. Pages matching your search:`;
   const opt = (value, text) => {
@@ -101,52 +178,62 @@ function showChooser(res, lang) {
     g.append(opt(res.title, `${res.title} (the disambiguation page itself)`));
     sel.append(g);
   }
-  sel.onchange = () => sel.value && load(sel.value, lang, {});
-  el.chooser.hidden = false;
+  sel.onchange = () => {
+    if (!sel.value) return;
+    slot.resolved = { title: sel.value, lang };
+    lookupAll({ keepView: true });
+  };
+  slot.resolved = null;
+  slot.chooser.hidden = false;
   sel.focus();
 }
 
-async function load(title, lang, initial) {
-  loadCtrl?.abort();
-  const ctrl = (loadCtrl = new AbortController());
-  setStatus(`Fetching revisions of “${title}”…`);
-  el.load.disabled = true;
+// Histories already fetched this session, so adding, removing or switching pages is instant.
+const cache = new Map();
+
+async function getHistory(title, lang, signal, onProgress) {
+  const key = `${lang}|${title}`;
+  if (cache.has(key)) return cache.get(key);
+  const data = await fetchRevisions(title, { lang, signal, onProgress });
+  if (!data.revisions.length) throw new Error(`“${title}” has no visible revisions.`);
+  const names = [...new Set(data.revisions.map(r => r.user).filter(Boolean))];
   try {
-    const data = await fetchRevisions(title, {
-      lang, signal: ctrl.signal,
-      onProgress: (n, ts) => setStatus(`Fetching revisions… ${fmtInt(n)}${ts ? ` (through ${fmtDate(ts)})` : ''}`),
-    });
-    if (ctrl.signal.aborted) return;
-    if (!data.revisions.length) throw new Error('That page has no visible revisions.');
-    setStatus('Checking for bot accounts…');
-    const names = [...new Set(data.revisions.map(r => r.user).filter(Boolean))];
-    try {
-      data.bots = await fetchBotUsers(names, { lang, signal: ctrl.signal });
-    } catch (err) {
-      if (err.name === 'AbortError') throw err;
-      data.bots = new Set(names.filter(n => BOT_NAME.test(n))); // fall back to the name rule
-    }
-    data.allTimeTop = topUsers(buildUsers(data.revisions));
-    if (ctrl.signal.aborted) return;
-    state.data = data;
-    state.fullStart = data.page.created ?? data.revisions[0].ts;
-    state.fullEnd = Date.now();
+    data.bots = await fetchBotUsers(names, { lang, signal });
+  } catch (err) {
+    if (err.name === 'AbortError') throw err;
+    data.bots = new Set(names.filter(n => BOT_NAME.test(n))); // fall back to the name rule
+  }
+  data.allTimeTop = topUsers(buildUsers(data.revisions));
+  cache.set(key, data);
+  return data;
+}
+
+async function loadAll(ctrl, initial) {
+  const want = slots.map((s, k) => ({ s, k })).filter(({ s }) => s.resolved);
+  const progress = want.map(() => 0);
+  const show = () => setStatus(`Fetching revisions… ${want.map(({ s }, i) =>
+    `${s.resolved.title}: ${fmtInt(progress[i])}`).join(' · ')}`);
+  show();
+  const datas = await Promise.all(want.map(({ s }, i) =>
+    getHistory(s.resolved.title, s.resolved.lang, ctrl.signal, n => { progress[i] = n; show(); })));
+  if (ctrl.signal.aborted) return;
+
+  const keep = initial.keepView && state.pages.length;
+  state.pages = datas.map((d, i) => ({ ...d, color: want[i].k }));
+  state.fullStart = Math.min(...state.pages.map(p => p.page.created ?? p.revisions[0].ts));
+  state.fullEnd = Date.now();
+  if (!keep) {
     state.start = initial.start ?? null;
     state.end = initial.end ?? null;
     state.gran = initial.gran ?? 'auto';
     state.sort = initial.sort ?? 'edits';
     state.dir = initial.dir ?? null;
-    el.page.value = data.page.title;
-    document.title = `${data.page.title} · ${BASE_TITLE}`;
-    setStatus('');
-    el.results.hidden = false;
-    renderAll();
-  } catch (err) {
-    if (err.name === 'AbortError') return;
-    setStatus(err.message, true);
-  } finally {
-    if (loadCtrl === ctrl) el.load.disabled = false;
   }
+  want.forEach(({ s }, i) => { s.input.value = datas[i].page.title; });
+  document.title = `${state.pages.map(p => p.page.title).join(' vs ')} · ${BASE_TITLE}`;
+  setStatus('');
+  el.results.hidden = false;
+  renderAll();
 }
 
 function setStatus(msg, isError = false) {
@@ -164,43 +251,61 @@ const range = () => ({
 function effectiveGran() {
   const { start, end } = range();
   if (state.gran !== 'auto' && estimateBins(start, end, state.gran) <= MAX_BINS) return state.gran;
-  return autoGranularity(start, end, AUTO_BINS);
+  return autoGranularity(start, end, Math.round(AUTO_BINS / state.pages.length));
 }
 
 function renderAll() {
-  const { page, revisions } = state.data;
   const { start, end } = range();
-  tl = buildTimeline(revisions, { granularity: effectiveGran(), start, end, bots: state.data.bots });
-  users = sortUsers(buildUsers(revisions, { start, end }), state.sort, state.dir);
+  const g = effectiveGran();
+  const series = state.pages.map(p => buildTimeline(p.revisions, { granularity: g, start, end, bots: p.bots }).bins);
+  tl = { granularity: g, start, end, bins: series[0], series };
+  users = sortUsers(buildUsers(state.data.revisions, { start, end }), state.sort, state.dir);
   state.hover = -1;
 
-  // summary
-  const all = revisions;
-  const editors = new Set(all.map(r => r.user ?? HIDDEN_USER)).size;
-  el.pageLink.textContent = page.title;
-  el.pageLink.href = `https://${page.lang}.wikipedia.org/wiki/${encodeURIComponent(page.title.replace(/ /g, '_'))}`;
-  el.summary.textContent = [
-    page.redirectedFrom ? `Redirected from “${page.redirectedFrom}”` : null,
-    `${page.lang}.wikipedia.org`,
-    `${fmtInt(all.length)} edits by ${fmtInt(editors)} editors`,
-  ].filter(Boolean).join(' · ');
-  el.summary2.textContent = [
-    `Created ${fmtDate(state.fullStart)}`,
-    `${fmtYearsDays(WIKIPEDIA_LAUNCH, state.fullStart)} after Wikipedia launched`,
-    `${fmtYearsDays(state.fullStart, Date.now())} ago`,
-    `current size ${fmtInt(all.at(-1).size)} bytes`,
-  ].join(' · ');
-
+  renderSummary();
   renderControls();
+  const multi = state.pages.length > 1;
   const inRange = users.reduce((s, u) => s + u.edits, 0);
   const span = `${fmtDate(start)} → ${fmtDate(end)}`;
   el.tlTitle.textContent = `Edits per ${tl.granularity} · ${span}`;
+  el.tlLegend.innerHTML = multi ? state.pages.map(p =>
+    `<span class="legend-item"><span class="swatch" style="background:var(--page-${p.color + 1})"></span>${esc(p.page.title)}</span>`).join('') : '';
+  el.tlLegend.hidden = !multi;
+  el.usersNote.hidden = !multi;
+  el.usersNote.innerHTML = multi
+    ? `<span class="swatch" style="background:var(--page-${state.data.color + 1})"></span> Showing <b>${esc(state.data.page.title)}</b> only — comparing pages here is still to come.` : '';
   el.usersSub.textContent = `${fmtInt(inRange)} edits by ${fmtInt(users.length)} editors (${subtotals(editorBreakdown(users, state.data.bots))}) · ${span}`
     + (state.start != null || state.end != null ? ' (selected range)' : '');
   drawCharts();
   if (el.tableView.open) renderTable();
   renderUsers();
   syncUrl();
+}
+
+const pageUrl = page => `https://${page.lang}.wikipedia.org/wiki/${encodeURIComponent(page.title.replace(/ /g, '_'))}`;
+
+function renderSummary() {
+  const multi = state.pages.length > 1;
+  el.summary.innerHTML = state.pages.map(({ page, revisions, color }) => {
+    const created = page.created ?? revisions[0].ts;
+    const editors = new Set(revisions.map(r => r.user ?? HIDDEN_USER)).size;
+    const line1 = [
+      page.redirectedFrom ? `Redirected from “${esc(page.redirectedFrom)}”` : null,
+      `${page.lang}.wikipedia.org`,
+      `${fmtInt(revisions.length)} edits by ${fmtInt(editors)} editors`,
+    ].filter(Boolean).join(' · ');
+    const line2 = [
+      `Created ${fmtDate(created)}`,
+      `${fmtYearsDays(WIKIPEDIA_LAUNCH, created)} after Wikipedia launched`,
+      `${fmtYearsDays(created, Date.now())} ago`,
+      `current size ${fmtInt(revisions.at(-1).size)} bytes`,
+    ].join(' · ');
+    return `<div class="summary-page">
+      <h2>${multi ? `<span class="swatch" style="background:var(--page-${color + 1})"></span>` : ''}<a href="${pageUrl(page)}" target="_blank" rel="noopener">${esc(page.title)}</a></h2>
+      <p class="muted">${line1}</p>
+      <p class="muted">${line2}</p>
+    </div>`;
+  }).join('');
 }
 
 function renderControls() {
@@ -350,7 +455,8 @@ function drawTimeline() {
   const { ctx, width, height } = setupCanvas(el.tlCanvas);
   const sx = xScale(width);
   const h = height - M.t - M.b;
-  const maxEdits = Math.max(...tl.bins.map(b => b.edits));
+  const n = tl.series.length;
+  const maxEdits = Math.max(...tl.series.flatMap(bins => bins.map(b => b.edits)));
   const ys = niceScale(maxEdits, 4);
   const y = v => M.t + h - (v / ys.max) * h;
   ctx.font = `11px ${css('--font')}`;
@@ -373,22 +479,29 @@ function drawTimeline() {
     ctx.fillRect(sx.x(b.start), M.t, Math.max(1, sx.x(b.end) - sx.x(b.start)), h);
   }
 
-  // columns
-  const base = css('--series-1'), hov = css('--series-1-hover');
+  // columns: one per page, side by side within each period
   let maxIdx = -1;
+  if (n === 1) maxIdx = tl.bins.findIndex(b => b.edits === maxEdits);
   tl.bins.forEach((b, i) => {
-    if (b.edits === maxEdits && maxIdx < 0) maxIdx = i;
-    if (!b.edits) return;
     const x0 = sx.x(b.start), slot = sx.x(b.end) - x0;
     const gap = slot >= 6 ? 2 : slot >= 3 ? 1 : 0;
-    const bw = Math.max(1, Math.min(24, slot - gap));
-    const bx = x0 + (slot - bw) / 2;
-    const top = y(b.edits), bh = Math.max(1, M.t + h - top);
-    ctx.fillStyle = i === state.hover ? hov : base;
-    ctx.beginPath();
-    if (bw >= 8 && ctx.roundRect) ctx.roundRect(bx, M.t + h - bh, bw, bh, [Math.min(4, bh), Math.min(4, bh), 0, 0]);
-    else ctx.rect(bx, M.t + h - bh, bw, bh);
-    ctx.fill();
+    const avail = slot - gap;
+    const inner = n > 1 ? (avail / n >= 8 ? 2 : avail / n >= 4 ? 1 : 0) : 0;
+    const bw = Math.max(1, Math.min(24, (avail - inner * (n - 1)) / n));
+    const groupW = bw * n + inner * (n - 1);
+    let bx = x0 + (slot - groupW) / 2;
+    tl.series.forEach((bins, k) => {
+      const v = bins[i].edits;
+      if (v) {
+        const top = y(v), bh = Math.max(1, M.t + h - top);
+        ctx.fillStyle = pageColor(state.pages[k].color);
+        ctx.beginPath();
+        if (bw >= 8 && ctx.roundRect) ctx.roundRect(bx, M.t + h - bh, bw, bh, [Math.min(4, bh), Math.min(4, bh), 0, 0]);
+        else ctx.rect(bx, M.t + h - bh, bw, bh);
+        ctx.fill();
+      }
+      bx += bw + inner;
+    });
   });
 
   // baseline
@@ -396,7 +509,7 @@ function drawTimeline() {
   ctx.fillRect(M.l, M.t + h, sx.w, 1);
 
   // direct label on the peak only
-  if (maxIdx >= 0 && maxEdits > 0) {
+  if (n === 1 && maxIdx >= 0 && maxEdits > 0) {
     const b = tl.bins[maxIdx];
     const cx = (sx.x(b.start) + sx.x(b.end)) / 2;
     const text = `${fmtInt(maxEdits)} · ${fmtPeriod(b.start, tl.granularity)}`;
@@ -426,8 +539,9 @@ function drawBytes() {
   const sx = xScale(width);
   const top = 10, bottom = 4;
   const h = height - top - bottom;
-  const vals = tl.bins.map(b => b.bytes).filter(v => v != null);
-  const ys = niceScale(Math.max(0, ...vals), 2);
+  const n = tl.series.length;
+  const vals = tl.series.flatMap(bins => bins.map(b => b.bytes)).filter(v => v != null);
+  const ys = niceScale(vals.reduce((m, v) => Math.max(m, v), 0), 2);
   const y = v => top + h - (v / ys.max) * h;
   ctx.font = `11px ${css('--font')}`;
   ctx.textBaseline = 'middle';
@@ -439,43 +553,53 @@ function drawBytes() {
     ctx.fillText(compact(v), M.l - 8, y(v));
   }
 
-  // step line (value holds across each period, ends at its end-of-period size)
-  const segs = [];
-  let cur = null;
-  for (const b of tl.bins) {
-    if (b.bytes == null) { cur = null; continue; }
-    if (!cur) segs.push((cur = []));
-    cur.push([sx.x(b.start), y(b.bytes)], [sx.x(b.end), y(b.bytes)]);
-  }
-  for (const pts of segs) {
-    ctx.beginPath();
-    ctx.moveTo(pts[0][0], y(0));
-    for (const [px, py] of pts) ctx.lineTo(px, py);
-    ctx.lineTo(pts.at(-1)[0], y(0));
-    ctx.closePath();
-    ctx.fillStyle = css('--size-wash');
-    ctx.fill();
-    ctx.beginPath();
-    pts.forEach(([px, py], i) => (i ? ctx.lineTo(px, py) : ctx.moveTo(px, py)));
-    ctx.strokeStyle = css('--size-line');
-    ctx.lineWidth = 2;
-    ctx.lineJoin = 'round';
-    ctx.lineCap = 'round';
-    ctx.stroke();
-  }
+  // Step lines: each value holds across its period and is the size at the period's end.
+  // One page keeps the grey line and wash; several pages each get their colour, no wash.
+  const lineColor = k => (n === 1 ? css('--size-line') : pageColor(state.pages[k].color));
+  tl.series.forEach((bins, k) => {
+    const segs = [];
+    let cur = null;
+    for (const b of bins) {
+      if (b.bytes == null) { cur = null; continue; }
+      if (!cur) segs.push((cur = []));
+      cur.push([sx.x(b.start), y(b.bytes)], [sx.x(b.end), y(b.bytes)]);
+    }
+    for (const pts of segs) {
+      if (n === 1) {
+        ctx.beginPath();
+        ctx.moveTo(pts[0][0], y(0));
+        for (const [px, py] of pts) ctx.lineTo(px, py);
+        ctx.lineTo(pts.at(-1)[0], y(0));
+        ctx.closePath();
+        ctx.fillStyle = css('--size-wash');
+        ctx.fill();
+      }
+      ctx.beginPath();
+      pts.forEach(([px, py], i) => (i ? ctx.lineTo(px, py) : ctx.moveTo(px, py)));
+      ctx.strokeStyle = lineColor(k);
+      ctx.lineWidth = 2;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      ctx.stroke();
+    }
+  });
 
-  if (state.hover >= 0 && tl.bins[state.hover].bytes != null) {
+  if (state.hover >= 0) {
     const b = tl.bins[state.hover];
     const cx = (sx.x(b.start) + sx.x(b.end)) / 2;
     ctx.fillStyle = css('--hover-band');
     ctx.fillRect(sx.x(b.start), top, Math.max(1, sx.x(b.end) - sx.x(b.start)), h);
-    ctx.beginPath();
-    ctx.arc(cx, y(b.bytes), 4, 0, Math.PI * 2);
-    ctx.fillStyle = css('--size-line');
-    ctx.strokeStyle = css('--surface-1');
-    ctx.lineWidth = 2;
-    ctx.fill();
-    ctx.stroke();
+    tl.series.forEach((bins, k) => {
+      const v = bins[state.hover].bytes;
+      if (v == null) return;
+      ctx.beginPath();
+      ctx.arc(cx, y(v), 4, 0, Math.PI * 2);
+      ctx.fillStyle = lineColor(k);
+      ctx.strokeStyle = css('--surface-1');
+      ctx.lineWidth = 2;
+      ctx.fill();
+      ctx.stroke();
+    });
   }
 }
 
@@ -502,15 +626,29 @@ function setHover(i, clientX, clientY) {
   if (i < 0) { el.tip.hidden = true; return; }
   const b = tl.bins[i];
   const canZoom = tl.granularity !== 'hour';
+  const ROWS = [
+    ['Edits', x => fmtInt(x.edits)],
+    ['Editors', x => fmtInt(x.editors)],
+    ['bots', x => fmtInt(x.bots), true],
+    ['IP addresses', x => fmtInt(x.ips), true],
+    ['hidden usernames', x => fmtInt(x.hidden), true],
+    ['Avg edits per editor', perEditor],
+    ['Bytes at end', x => fmtInt(x.bytes)],
+  ];
+  let body;
+  if (tl.series.length === 1) {
+    body = ROWS.map(([label, f, sub]) =>
+      `<div class="t-row${sub ? ' t-sub' : ''}"><span>${label}</span><span>${f(b)}</span></div>`).join('');
+  } else {
+    const short = t => esc(t.length > 18 ? t.slice(0, 17) + '…' : t);
+    body = `<table class="t-table"><thead><tr><th></th>${state.pages.map(p =>
+      `<th><span class="swatch" style="background:var(--page-${p.color + 1})"></span>${short(p.page.title)}</th>`).join('')}</tr></thead><tbody>${
+      ROWS.map(([label, f, sub]) => `<tr${sub ? ' class="t-sub"' : ''}><td>${label}</td>${tl.series.map(bins => `<td>${f(bins[i])}</td>`).join('')}</tr>`).join('')
+    }</tbody></table>`;
+  }
   el.tip.innerHTML = `
     <div class="t-head">${fmtPeriod(b.start, tl.granularity)}</div>
-    <div class="t-row"><span>Edits</span><span>${fmtInt(b.edits)}</span></div>
-    <div class="t-row"><span>Editors</span><span>${fmtInt(b.editors)}</span></div>
-    <div class="t-row t-sub"><span>bots</span><span>${fmtInt(b.bots)}</span></div>
-    <div class="t-row t-sub"><span>IP addresses</span><span>${fmtInt(b.ips)}</span></div>
-    <div class="t-row t-sub"><span>hidden usernames</span><span>${fmtInt(b.hidden)}</span></div>
-    <div class="t-row"><span>Avg edits per editor</span><span>${perEditor(b)}</span></div>
-    <div class="t-row"><span>Bytes at end</span><span>${fmtInt(b.bytes)}</span></div>
+    ${body}
     ${canZoom ? '<div class="t-hint">Click to zoom into this period</div>' : ''}`;
   el.tip.hidden = false;
   const card = el.tip.offsetParent.getBoundingClientRect();
@@ -584,9 +722,25 @@ const subtotals = s => `${fmtInt(s.bots)} bots, ${fmtInt(s.ips)} IP addresses, $
 const perEditor = b => (b.editors ? (b.edits / b.editors).toFixed(1) : '—');
 
 function renderTable() {
-  const rows = tl.bins.map(b =>
-    `<tr><td>${fmtPeriod(b.start, tl.granularity)}</td><td>${fmtInt(b.edits)}</td><td>${fmtInt(b.editors)}</td><td>${perEditor(b)}</td><td>${fmtInt(b.bytes)}</td></tr>`);
-  el.tlTable.innerHTML = `<thead><tr><th>Period (UTC)</th><th>Edits</th><th>Editors</th><th>Edits per editor</th><th>Bytes at end</th></tr></thead><tbody>${rows.join('')}</tbody>`;
+  const multi = tl.series.length > 1;
+  const cols = b => `<td>${fmtInt(b.edits)}</td><td>${fmtInt(b.editors)}</td><td>${perEditor(b)}</td><td>${fmtInt(b.bytes)}</td>`;
+  const rows = tl.bins.map((b, i) =>
+    `<tr><td>${fmtPeriod(b.start, tl.granularity)}</td>${tl.series.map(bins => cols(bins[i])).join('')}</tr>`);
+  const sub = '<th>Edits</th><th>Editors</th><th>Edits per editor</th><th>Bytes at end</th>';
+  const head = multi
+    ? `<tr><th></th>${state.pages.map(p => `<th colspan="4" class="t-page"><span class="swatch" style="background:var(--page-${p.color + 1})"></span>${esc(p.page.title)}</th>`).join('')}</tr>
+       <tr><th>Period (UTC)</th>${state.pages.map(() => sub).join('')}</tr>`
+    : `<tr><th>Period (UTC)</th>${sub}</tr>`;
+  el.tlTable.innerHTML = `<thead>${head}</thead><tbody>${rows.join('')}</tbody>`;
+}
+
+function comparisonCsv() {
+  const cols = ['edits', 'editors', 'bot_editors', 'ip_editors', 'hidden_name_editors', 'bytes_at_end'];
+  return toCsv([
+    ['period_start_utc', 'period', ...state.pages.flatMap(p => cols.map(c => `${p.page.title}: ${c}`))],
+    ...tl.bins.map((b, i) => [new Date(b.start).toISOString(), fmtPeriod(b.start, tl.granularity),
+      ...tl.series.flatMap(bins => { const x = bins[i]; return [x.edits, x.editors, x.bots, x.ips, x.hidden, x.bytes]; })]),
+  ]);
 }
 
 function download(name, text) {
@@ -596,8 +750,9 @@ function download(name, text) {
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
-const slug = () => state.data.page.title.replace(/[^\w-]+/g, '_');
-el.tlCsv.onclick = () => download(`${slug()}-edits-per-${tl.granularity}.csv`, timelineCsv(tl));
+const slug = (pages = [state.data]) => pages.map(p => p.page.title.replace(/[^\w-]+/g, '_')).join('-vs-');
+el.tlCsv.onclick = () => download(`${slug(state.pages)}-edits-per-${tl.granularity}.csv`,
+  tl.series.length > 1 ? comparisonCsv() : timelineCsv(tl));
 el.usersCsv.onclick = () => download(`${slug()}-edits-per-user.csv`, usersCsv(users));
 
 // ------------------------------------------------------------------ users chart
@@ -694,8 +849,12 @@ new IntersectionObserver(entries => {
 
 function syncUrl() {
   const p = new URLSearchParams();
-  p.set('page', state.data.page.title);
-  if (state.data.page.lang !== 'en') p.set('lang', state.data.page.lang);
+  const lang0 = state.pages[0].page.lang;
+  state.pages.forEach(({ page }, i) => {
+    p.set(i ? `page${i + 1}` : 'page', page.title);
+    if (i && page.lang !== lang0) p.set(`lang${i + 1}`, page.lang);
+  });
+  if (lang0 !== 'en') p.set('lang', lang0);
   if (state.start != null) p.set('from', toLocalInput(state.start));
   if (state.end != null) p.set('to', toLocalInput(state.end));
   if (state.gran !== 'auto') p.set('g', state.gran);
@@ -706,12 +865,18 @@ function syncUrl() {
 
 function initFromUrl() {
   const p = new URLSearchParams(location.search);
-  const page = p.get('page');
-  if (!page) { el.page.focus(); return; }
   const lang = p.get('lang') || 'en';
-  el.page.value = page;
   el.lang.value = lang;
-  lookup(page, lang, {
+  const first = addSlot(p.get('page') || '');
+  for (const i of [2, 3]) {
+    const t = p.get(`page${i}`);
+    if (!t) continue;
+    const s = addSlot(t);
+    const l = p.get(`lang${i}`);
+    if (l && l !== lang) s.input.value = `https://${l}.wikipedia.org/wiki/${encodeURIComponent(t.replace(/ /g, '_'))}`;
+  }
+  if (!p.get('page')) { first.input.focus(); return; }
+  lookupAll({
     start: fromLocalInput(p.get('from')) ?? undefined,
     end: p.get('to') ? fromLocalInput(p.get('to'), true) : undefined,
     gran: GRANULARITIES.includes(p.get('g')) ? p.get('g') : undefined,

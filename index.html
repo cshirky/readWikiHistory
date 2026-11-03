@@ -13,29 +13,24 @@
     <header class="masthead">
       <h1>Wikipedia edit history</h1>
       <form id="page-form" class="page-form" autocomplete="off">
-        <label class="field grow">
-          <span>Page title or URL</span>
-          <input id="page-input" type="text" placeholder="e.g. Ada Lovelace" required>
-        </label>
-        <label class="field lang">
-          <span>Wiki</span>
-          <input id="lang-input" type="text" value="en" size="4" pattern="[a-z0-9\-]+" title="Language code, e.g. en, de, fr">
-        </label>
-        <button type="submit" id="load-btn">Load history</button>
+        <div id="slots" class="slots"></div>
+        <div class="form-actions">
+          <div class="compare-btns">
+            <button type="button" id="add-one" class="ghost small">+ Compare another page</button>
+            <button type="button" id="add-two" class="ghost small">+ Compare two other pages</button>
+          </div>
+          <label class="field lang">
+            <span>Wiki</span>
+            <input id="lang-input" type="text" value="en" size="4" pattern="[a-z0-9\-]+" title="Language code, e.g. en, de, fr">
+          </label>
+          <button type="submit" id="load-btn">Load history</button>
+        </div>
       </form>
       <p id="status" class="status" role="status" aria-live="polite"></p>
-      <div id="chooser" class="chooser" hidden>
-        <label for="chooser-select" id="chooser-msg"></label>
-        <select id="chooser-select"></select>
-      </div>
     </header>
 
     <section id="results" hidden>
-      <div class="summary">
-        <h2><a id="page-link" target="_blank" rel="noopener"></a></h2>
-        <p id="summary-line" class="muted"></p>
-        <p id="summary-line-2" class="muted"></p>
-      </div>
+      <div class="summary" id="summary"></div>
 
       <div class="controls" role="toolbar" aria-label="Timeline controls">
         <button type="button" id="reset-btn" class="ghost">Full history</button>
@@ -54,6 +49,7 @@
         <figcaption>
           <h3 id="tl-title">Edits</h3>
           <p class="muted small">Drag across the chart to zoom to a range · click a column to zoom into that period</p>
+          <div class="legend" id="tl-legend" hidden></div>
         </figcaption>
         <div class="chart-wrap" id="tl-wrap">
           <canvas id="tl-canvas" aria-label="Column chart of edits per period"></canvas>
@@ -75,6 +71,7 @@
         <figcaption class="users-head">
           <div>
             <h3>Edits per user</h3>
+            <p class="small users-note" id="users-note" hidden></p>
             <p class="muted small" id="users-sub"></p>
             <p class="small" id="users-stats"></p>
             <p class="muted small" id="users-key" hidden></p>
