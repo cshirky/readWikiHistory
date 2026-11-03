@@ -26,8 +26,11 @@ npm run serve            # python3 -m http.server 8000
   three pages in all. Each page has a fixed colour: page 1 blue, page 2 orange, page 3 aqua. The
   column chart groups the pages' columns side by side in each period. The page-size chart draws one
   line per page. The rollover compares the pages in columns. Auto granularity divides its column
-  budget by the number of pages, so it picks a coarser unit when comparing. The per-user chart still
-  shows page 1 only. Each search box gets its own disambiguation dropdown.
+  budget by the number of pages, so it picks a coarser unit when comparing. The per-user chart lists every editor of
+  any compared page. Each user gets one line per page, with that page's dates, duration and an edit
+  bar in its colour; all bars share one scale. "Sort using" picks which page drives the sort (page 1
+  by default). Users who never edited that page go last. Bold, underline, green and blue are worked
+  out from that page, and each page's creator is tagged on that page's line. Each search box gets its own disambiguation dropdown.
 - By default the range runs from page creation to now. When comparing, it runs from the earliest
   page's creation. **Auto** picks the finest unit that gives at
   most 300 columns. A unit that would need more than 4,000 columns is greyed out until you narrow the range.

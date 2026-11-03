@@ -1,7 +1,7 @@
 import {
   GRANULARITIES, SORTS, HIDDEN_USER, parsePageInput, fetchRevisions, buildTimeline, buildUsers, sortUsers,
   autoGranularity, estimateBins, addUnits, floorTo, fmtPeriod, fmtDate, fmtInt, timelineCsv, usersCsv, toCsv,
-  fetchBotUsers, BOT_NAME, fmtElapsed, approxWords, WIKIPEDIA_LAUNCH, resolvePage, editorBreakdown, editStats, recordHolders, topUsers, editDuration, fmtDuration,
+  fetchBotUsers, BOT_NAME, combineUsers, sortCombined, fmtElapsed, approxWords, WIKIPEDIA_LAUNCH, resolvePage, editorBreakdown, editStats, recordHolders, topUsers, editDuration, fmtDuration,
 } from './lib/core.js';
 
 const MAX_BINS = 4000;   // granularities that would exceed this are disabled
@@ -19,7 +19,7 @@ const el = {
   tlTitle: $('tl-title'), tlLegend: $('tl-legend'), tlWrap: $('tl-wrap'), tlCanvas: $('tl-canvas'), brush: $('tl-brush'), tip: $('tl-tip'),
   bytesWrap: $('bytes-wrap'), bytesCanvas: $('bytes-canvas'),
   tlTable: $('tl-table'), tlCsv: $('tl-csv'), tableView: document.querySelector('.table-view'),
-  usersNote: $('users-note'), users: $('users'), usersSub: $('users-sub'), sortSeg: $('sort-seg'), dirBtn: $('dir-btn'),
+  anchorSeg: $('anchor-seg'), anchorLabel: $('anchor-label'), usersNote: $('users-note'), users: $('users'), usersSub: $('users-sub'), sortSeg: $('sort-seg'), dirBtn: $('dir-btn'),
   usersStats: $('users-stats'), usersKey: $('users-key'), usersEnd: $('users-end'), usersCsv: $('users-csv'),
 };
 
@@ -30,10 +30,12 @@ const state = {
   start: null, end: null, // null = full history
   gran: 'auto',
   sort: 'edits', dir: null,
+  anchor: 0,           // which page the per-user chart sorts and highlights by
   hover: -1,
 };
 let tl = null;         // current timeline { granularity, start, end, bins, series: [bins per page] }
-let users = [];        // current sorted users (page 1)
+let users = [];        // current sorted user rows: { user, anon, hidden, per: [stats | null per page] }
+let pageUsers = [];    // per page: that page's users within the range
 let loadCtrl = null;
 
 const BASE_TITLE = document.title;
@@ -228,6 +230,7 @@ async function loadAll(ctrl, initial) {
     state.gran = initial.gran ?? 'auto';
     state.sort = initial.sort ?? 'edits';
     state.dir = initial.dir ?? null;
+    state.anchor = initial.anchor ?? 0;
   }
   want.forEach(({ s }, i) => { s.input.value = datas[i].page.title; });
   document.title = `${state.pages.map(p => p.page.title).join(' vs ')} · ${BASE_TITLE}`;
@@ -259,23 +262,28 @@ function renderAll() {
   const g = effectiveGran();
   const series = state.pages.map(p => buildTimeline(p.revisions, { granularity: g, start, end, bots: p.bots }).bins);
   tl = { granularity: g, start, end, bins: series[0], series };
-  users = sortUsers(buildUsers(state.data.revisions, { start, end }), state.sort, state.dir);
+  if (state.anchor >= state.pages.length) state.anchor = 0;
+  pageUsers = state.pages.map(p => buildUsers(p.revisions, { start, end }));
+  users = sortCombined(combineUsers(pageUsers), state.sort, state.dir, state.anchor);
   state.hover = -1;
 
   renderSummary();
   renderControls();
   const multi = state.pages.length > 1;
-  const inRange = users.reduce((s, u) => s + u.edits, 0);
   const span = `${fmtDate(start)} → ${fmtDate(end)}`;
   el.tlTitle.textContent = `Edits per ${tl.granularity} · ${span}`;
   el.tlLegend.innerHTML = multi ? state.pages.map(p =>
     `<span class="legend-item"><span class="swatch" style="background:var(--page-${p.color + 1})"></span>${esc(p.page.title)}</span>`).join('') : '';
   el.tlLegend.hidden = !multi;
-  el.usersNote.hidden = !multi;
-  el.usersNote.innerHTML = multi
-    ? `<span class="swatch" style="background:var(--page-${state.data.color + 1})"></span> Showing <b>${esc(state.data.page.title)}</b> only — comparing pages here is still to come.` : '';
-  el.usersSub.textContent = `${fmtInt(inRange)} edits by ${fmtInt(users.length)} editors (${subtotals(editorBreakdown(users, state.data.bots))}) · ${span}`
-    + (state.start != null || state.end != null ? ' (selected range)' : '');
+  const ranged = state.start != null || state.end != null ? ' (selected range)' : '';
+  if (multi) {
+    const shared = users.filter(r => r.per.filter(Boolean).length > 1).length;
+    el.usersSub.textContent = `${fmtInt(users.length)} different editors across ${state.pages.length} pages · `
+      + `${fmtInt(shared)} edited more than one · ${span}${ranged}`;
+  } else {
+    const inRange = pageUsers[0].reduce((s, u) => s + u.edits, 0);
+    el.usersSub.textContent = `${fmtInt(inRange)} edits by ${fmtInt(users.length)} editors (${subtotals(editorBreakdown(users, state.data.bots))}) · ${span}${ranged}`;
+  }
   drawCharts();
   if (el.tableView.open) renderTable();
   renderUsers();
@@ -344,6 +352,27 @@ function renderControls() {
   }));
   el.dirBtn.textContent = dirArrow();
   el.dirBtn.title = dirLabel();
+
+  const multi = state.pages.length > 1;
+  el.anchorSeg.hidden = el.anchorLabel.hidden = !multi;
+  el.anchorSeg.replaceChildren(...(multi ? state.pages : []).map((p, k) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.setAttribute('role', 'radio');
+    b.setAttribute('aria-checked', String(state.anchor === k));
+    b.title = `Sort and highlight by ${p.page.title}`;
+    b.innerHTML = `<span class="swatch" style="background:var(--page-${p.color + 1})"></span>${esc(p.page.title.length > 22 ? p.page.title.slice(0, 21) + '…' : p.page.title)}`;
+    b.onclick = () => setAnchor(k);
+    return b;
+  }));
+}
+
+function setAnchor(k) {
+  state.anchor = k;
+  users = sortCombined(users, state.sort, state.dir, state.anchor);
+  renderControls();
+  renderUsers();
+  syncUrl();
 }
 
 const curDir = () => state.dir || SORTS[state.sort].defaultDir;
@@ -358,7 +387,7 @@ function dirLabel() {
 function setSort(key) {
   if (state.sort === key) state.dir = curDir() === 'asc' ? 'desc' : 'asc';
   else { state.sort = key; state.dir = null; }
-  users = sortUsers(users, state.sort, state.dir);
+  users = sortCombined(users, state.sort, state.dir, state.anchor);
   renderControls();
   renderUsers();
   syncUrl();
@@ -753,78 +782,135 @@ function download(name, text) {
 const slug = (pages = [state.data]) => pages.map(p => p.page.title.replace(/[^\w-]+/g, '_')).join('-vs-');
 el.tlCsv.onclick = () => download(`${slug(state.pages)}-edits-per-${tl.granularity}.csv`,
   tl.series.length > 1 ? comparisonCsv() : timelineCsv(tl));
-el.usersCsv.onclick = () => download(`${slug()}-edits-per-user.csv`, usersCsv(users));
+el.usersCsv.onclick = () => download(`${slug(state.pages)}-edits-per-user.csv`,
+  state.pages.length > 1 ? comparisonUsersCsv() : usersCsv(users.map(r => r.per[0])));
+
+function comparisonUsersCsv() {
+  const iso = t => (t == null ? '' : new Date(t).toISOString());
+  return toCsv([
+    ['user', 'anonymous', ...state.pages.flatMap(p => ['edits', 'first_edit_utc', 'last_edit_utc', 'duration'].map(c => `${p.page.title}: ${c}`))],
+    ...users.map(r => [r.user, r.anon ? 'yes' : 'no', ...r.per.flatMap(u => (u
+      ? [u.edits, iso(u.first), iso(u.last), fmtDuration(editDuration(u.first, u.last))]
+      : [0, '', '', '']))]),
+  ]);
+}
 
 // ------------------------------------------------------------------ users chart
 
 const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 // Rows are added in batches as the list scrolls into view.
-const isRecent = u => !u.hidden && Date.now() - u.last <= RECENT_MS;
-const ulist = { shown: 0, max: 1, records: new Set(), timeSort: false };
+const isRecent = u => !!u && !u.hidden && Date.now() - u.last <= RECENT_MS;
+const ulist = { shown: 0, max: 1, records: new Set(), timeSort: false, bots: new Set(), creators: [] };
+const num = v => (Number.isInteger(v) ? fmtInt(v) : v.toFixed(1));
+const swatch = k => `<span class="swatch" style="background:var(--page-${state.pages[k].color + 1})"></span>`;
 
 function renderUsers() {
-  const { bots, allTimeTop } = state.data;
+  const multi = state.pages.length > 1;
+  const a = state.anchor;
+  const anchor = state.pages[a];
   ulist.shown = 0;
-  ulist.max = users.reduce((m, u) => Math.max(m, u.edits), 1);
+  ulist.max = pageUsers.flat().reduce((m, u) => Math.max(m, u.edits), 1); // one scale for every page
   ulist.timeSort = state.sort === 'first' || state.sort === 'last'; // bold/underline apply to date sorts only
-  ulist.records = ulist.timeSort ? recordHolders(users, state.sort) : new Set();
+  ulist.records = ulist.timeSort ? recordHolders(pageUsers[a], state.sort) : new Set();
+  ulist.bots = new Set(state.pages.flatMap(p => [...p.bots]));
+  ulist.creators = state.pages.map(p => p.revisions[0].user);
 
-  const s = editStats(users);
-  const num = v => (Number.isInteger(v) ? fmtInt(v) : v.toFixed(1));
-  el.usersStats.innerHTML = `Edits per editor: <b>mean</b> ${num(s.mean)} · <b>median</b> ${num(s.median)} · <b>mode</b> ${num(s.mode)}`;
+  // Stats: one line per page when comparing.
+  el.usersStats.innerHTML = state.pages.map((p, k) => {
+    const s = editStats(pageUsers[k]);
+    const stats = `<b>mean</b> ${num(s.mean)} · <b>median</b> ${num(s.median)} · <b>mode</b> ${num(s.mode)}`;
+    if (!multi) return `Edits per editor: ${stats}`;
+    const edits = pageUsers[k].reduce((t, u) => t + u.edits, 0);
+    return `<div>${swatch(k)}<b>${esc(p.page.title)}</b>: ${fmtInt(edits)} edits by ${fmtInt(pageUsers[k].length)} editors `
+      + `(${subtotals(editorBreakdown(pageUsers[k], p.bots))}) · edits per editor: ${stats}</div>`;
+  }).join('');
 
-  const anyBots = users.some(u => bots.has(u.user));
+  const onAnchor = users.filter(r => r.per[a]).map(r => r.per[a]);
   const key = [];
+  if (multi) key.push(`Sorting and highlights use ${swatch(a)}<b>${esc(anchor.page.title)}</b>`);
   if (ulist.timeSort) {
     const when = state.sort === 'first' ? 'first edit' : 'last edit';
     key.push(`<span class="u-record">Bold</span>: most edits of anyone up to that ${when}`);
-    if (users.some(u => allTimeTop.has(u.user))) key.push('<span class="u-top">Underlined</span>: most edits of all time');
+    if (onAnchor.some(u => anchor.allTimeTop.has(u.user))) key.push('<span class="u-top">Underlined</span>: most edits of all time');
   }
-  const creator = state.data.revisions[0].user;
-  if (creator && users.some(u => u.user === creator)) key.push('<span class="u-creator">Green</span>: created the page');
-  if (users.some(isRecent)) key.push('<span class="u-recent">Blue</span>: edited in the last 7 days');
-  if (anyBots) key.push('<span class="u-bot">Orange</span>: bot account');
+  const creator = ulist.creators[a];
+  if (creator && onAnchor.some(u => u.user === creator)) key.push('<span class="u-creator">Green</span>: created the page');
+  if (onAnchor.some(isRecent)) key.push('<span class="u-recent">Blue</span>: edited in the last 7 days');
+  if (users.some(r => ulist.bots.has(r.user))) key.push('<span class="u-bot">Orange</span>: bot account');
   el.usersKey.innerHTML = key.join(' · ');
   el.usersKey.hidden = !key.length;
 
   const arrow = dirArrow();
   const head = k => `${state.sort === k ? 'sorted' : ''}" data-arrow="${arrow}" data-sort="${k}`;
-  el.users.innerHTML = `
-    <div class="u-row u-header" role="row">
-      <span class="u-rank" role="columnheader">#</span>
-      <span class="u-name" role="columnheader">User</span>
+  const cols = `
       <span class="u-date u-first ${head('first')}" role="columnheader" style="cursor:pointer">First edit</span>
       <span class="u-date u-last ${head('last')}" role="columnheader" style="cursor:pointer">Last edit</span>
       <span class="u-dur ${head('duration')}" role="columnheader" style="cursor:pointer">Duration</span>
-      <span class="u-barcell ${head('edits')}" role="columnheader" style="cursor:pointer">Edits</span>
-    </div>`;
+      <span class="u-barcell ${head('edits')}" role="columnheader" style="cursor:pointer">Edits</span>`;
+  el.users.innerHTML = multi
+    ? `<div class="u-row u-multi u-header" role="row">
+        <span class="u-rank" role="columnheader">#</span>
+        <span class="u-name" role="columnheader">User</span>
+        <div class="u-subs"><div class="u-sub">${cols}</div></div>
+      </div>`
+    : `<div class="u-row u-header" role="row">
+        <span class="u-rank" role="columnheader">#</span>
+        <span class="u-name" role="columnheader">User</span>${cols}
+      </div>`;
   el.users.querySelectorAll('[data-sort]').forEach(h => (h.onclick = () => setSort(h.dataset.sort)));
   appendUsers();
 }
 
-function userRow(u, i) {
-  const { bots, allTimeTop, page } = state.data;
+// The name cell. Colour and bold/underline follow the anchor page.
+function nameCell(r) {
+  if (r.hidden) return `<span class="muted">${HIDDEN_USER}</span>`;
+  const a = state.anchor;
+  const anchor = state.pages[a];
+  const multi = state.pages.length > 1;
+  const isBot = ulist.bots.has(r.user);
+  const isCreator = r.user === ulist.creators[a];
   const cls = ['u-link'];
   // One colour per name: green (creator) beats blue (recent) beats orange (bot).
-  // The "creator" and "bot" tags still show what the colour doesn't.
-  const isCreator = !u.hidden && u.user === state.data.revisions[0].user;
   if (isCreator) cls.push('u-creator');
-  else if (isRecent(u)) cls.push('u-recent');
-  else if (bots.has(u.user)) cls.push('u-bot');
-  if (ulist.records.has(u.user)) cls.push('u-record');
-  if (ulist.timeSort && allTimeTop.has(u.user)) cls.push('u-top');
-  const tags = (isCreator ? '<span class="u-tag">creator</span>' : '') + (u.anon ? '<span class="u-tag">IP</span>' : '') + (bots.has(u.user) ? '<span class="u-tag">bot</span>' : '');
-  const name = u.hidden
-    ? `<span class="muted">${HIDDEN_USER}</span>`
-    : `<a class="${cls.join(' ')}" href="https://${page.lang}.wikipedia.org/wiki/Special:Contributions/${encodeURIComponent(u.user)}" target="_blank" rel="noopener" title="${esc(u.user)}">${esc(u.user)}</a>${tags}`;
-  return `<div class="u-row" role="row">
-    <span class="u-rank" role="cell">${i + 1}</span>
-    <span class="u-name" role="cell">${name}</span>
-    <span class="u-date u-first" role="cell" title="First edit">${fmtDate(u.first)}</span>
+  else if (isRecent(r.per[a])) cls.push('u-recent');
+  else if (isBot) cls.push('u-bot');
+  if (ulist.records.has(r.user)) cls.push('u-record');
+  if (ulist.timeSort && r.per[a] && anchor.allTimeTop.has(r.user)) cls.push('u-top');
+  const tags = (!multi && isCreator ? '<span class="u-tag">creator</span>' : '')
+    + (r.anon ? '<span class="u-tag">IP</span>' : '') + (isBot ? '<span class="u-tag">bot</span>' : '');
+  return `<a class="${cls.join(' ')}" href="https://${anchor.page.lang}.wikipedia.org/wiki/Special:Contributions/${encodeURIComponent(r.user)}" target="_blank" rel="noopener" title="${esc(r.user)}">${esc(r.user)}</a>${tags}`;
+}
+
+// First / last / duration / bar for one user on one page.
+function statCells(u, k) {
+  const multi = state.pages.length > 1;
+  const bar = multi ? ` style="background:var(--page-${state.pages[k].color + 1});width:` : ' style="width:';
+  return `
+    <span class="u-date u-first" role="cell" title="First edit">${multi ? swatch(k) : ''}${fmtDate(u.first)}</span>
     <span class="u-date u-last" role="cell" title="Last edit">${fmtDate(u.last)}</span>
     <span class="u-dur" role="cell" title="Time from first to last edit, rounded up to whole days">${fmtDuration(editDuration(u.first, u.last))}</span>
-    <span class="u-barcell" role="cell"><span class="u-bar" style="width:calc((100% - 3.5em) * ${u.edits / ulist.max})"></span><span class="u-count">${fmtInt(u.edits)}</span></span>
+    <span class="u-barcell" role="cell"><span class="u-bar"${bar}calc((100% - 3.5em) * ${u.edits / ulist.max})"></span><span class="u-count">${fmtInt(u.edits)}</span>${
+      multi && !u.hidden && u.user === ulist.creators[k] ? '<span class="u-tag">creator</span>' : ''}</span>`;
+}
+
+function userRow(r, i) {
+  if (state.pages.length === 1) {
+    return `<div class="u-row" role="row">
+      <span class="u-rank" role="cell">${i + 1}</span>
+      <span class="u-name" role="cell">${nameCell(r)}</span>${statCells(r.per[0], 0)}
+    </div>`;
+  }
+  const subs = r.per.map((u, k) => {
+    const cls = `u-sub${k === state.anchor ? ' u-anchor' : ''}`;
+    return u
+      ? `<div class="${cls}">${statCells(u, k)}</div>`
+      : `<div class="${cls} u-absent"><span class="u-date u-first">${swatch(k)}—</span><span class="u-none">no edits in this range</span></div>`;
+  }).join('');
+  return `<div class="u-row u-multi" role="row">
+    <span class="u-rank" role="cell">${i + 1}</span>
+    <span class="u-name" role="cell">${nameCell(r)}</span>
+    <div class="u-subs">${subs}</div>
   </div>`;
 }
 
@@ -860,6 +946,7 @@ function syncUrl() {
   if (state.gran !== 'auto') p.set('g', state.gran);
   if (state.sort !== 'edits') p.set('sort', state.sort);
   if (state.dir) p.set('dir', state.dir);
+  if (state.anchor) p.set('by', String(state.anchor + 1));
   history.replaceState(null, '', `?${p}`);
 }
 
@@ -882,6 +969,7 @@ function initFromUrl() {
     gran: GRANULARITIES.includes(p.get('g')) ? p.get('g') : undefined,
     sort: SORTS[p.get('sort')] ? p.get('sort') : undefined,
     dir: ['asc', 'desc'].includes(p.get('dir')) ? p.get('dir') : undefined,
+    anchor: ['2', '3'].includes(p.get('by')) ? +p.get('by') - 1 : undefined,
   });
 }
 initFromUrl();
