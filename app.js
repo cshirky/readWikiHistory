@@ -1,7 +1,7 @@
 import {
   GRANULARITIES, SORTS, HIDDEN_USER, parsePageInput, fetchRevisions, buildTimeline, buildUsers, sortUsers,
   autoGranularity, estimateBins, addUnits, floorTo, fmtPeriod, fmtDate, fmtDateTime, fmtInt, timelineCsv, usersCsv,
-  fetchBotUsers, BOT_NAME, editStats, recordHolders, topUsers, editDuration, fmtDuration,
+  fetchBotUsers, BOT_NAME, editorBreakdown, editStats, recordHolders, topUsers, editDuration, fmtDuration,
 } from './lib/core.js';
 
 const MAX_BINS = 4000;   // granularities that would exceed this are disabled
@@ -106,7 +106,7 @@ function effectiveGran() {
 function renderAll() {
   const { page, revisions } = state.data;
   const { start, end } = range();
-  tl = buildTimeline(revisions, { granularity: effectiveGran(), start, end });
+  tl = buildTimeline(revisions, { granularity: effectiveGran(), start, end, bots: state.data.bots });
   users = sortUsers(buildUsers(revisions, { start, end }), state.sort, state.dir);
   state.hover = -1;
 
@@ -127,7 +127,7 @@ function renderAll() {
   const inRange = users.reduce((s, u) => s + u.edits, 0);
   const span = `${fmtDate(start)} → ${fmtDate(end)}`;
   el.tlTitle.textContent = `Edits per ${tl.granularity} · ${span}`;
-  el.usersSub.textContent = `${fmtInt(inRange)} edits by ${fmtInt(users.length)} editors · ${span}`
+  el.usersSub.textContent = `${fmtInt(inRange)} edits by ${fmtInt(users.length)} editors (${subtotals(editorBreakdown(users, state.data.bots))}) · ${span}`
     + (state.start != null || state.end != null ? ' (selected range)' : '');
   drawCharts();
   if (el.tableView.open) renderTable();
@@ -438,6 +438,9 @@ function setHover(i, clientX, clientY) {
     <div class="t-head">${fmtPeriod(b.start, tl.granularity)}</div>
     <div class="t-row"><span>Edits</span><span>${fmtInt(b.edits)}</span></div>
     <div class="t-row"><span>Editors</span><span>${fmtInt(b.editors)}</span></div>
+    <div class="t-row t-sub"><span>bots</span><span>${fmtInt(b.bots)}</span></div>
+    <div class="t-row t-sub"><span>IP addresses</span><span>${fmtInt(b.ips)}</span></div>
+    <div class="t-row t-sub"><span>hidden usernames</span><span>${fmtInt(b.hidden)}</span></div>
     <div class="t-row"><span>Avg edits per editor</span><span>${perEditor(b)}</span></div>
     <div class="t-row"><span>Bytes at end</span><span>${fmtInt(b.bytes)}</span></div>
     ${canZoom ? '<div class="t-hint">Click to zoom into this period</div>' : ''}`;
@@ -509,6 +512,7 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => tl &
 
 el.tableView.addEventListener('toggle', () => el.tableView.open && renderTable());
 
+const subtotals = s => `${fmtInt(s.bots)} bots, ${fmtInt(s.ips)} IP addresses, ${fmtInt(s.hidden)} hidden usernames`;
 const perEditor = b => (b.editors ? (b.edits / b.editors).toFixed(1) : '—');
 
 function renderTable() {

@@ -198,3 +198,4 @@ th { position: sticky; top: 0; background: var(--surface-1); color: var(--text-s
 .sort-controls { flex-wrap: wrap; }
 .u-recent, .u-name a.u-recent { color: var(--recent-text); }
 .u-dur { font-variant-numeric: tabular-nums; color: var(--text-secondary); white-space: nowrap; }
+.tooltip .t-sub span:first-child { padding-left: 12px; color: var(--text-muted); }
