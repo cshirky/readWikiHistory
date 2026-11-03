@@ -1,6 +1,6 @@
 import {
-  GRANULARITIES, SORTS, HIDDEN_USER, parsePageInput, fetchRevisions, buildTimeline, buildUsers, sortUsers,
-  autoGranularity, estimateBins, addUnits, floorTo, fmtPeriod, fmtDate, fmtInt, timelineCsv, usersCsv, toCsv,
+  GRANULARITIES, SORTS, HIDDEN_USER, parsePageInput, fetchRevisions, buildTimeline, buildUsers,
+  autoGranularity, estimateBins, addUnits, floorTo, fmtPeriod, fmtDate, fmtInt, timelineCsv, usersCsv,
   fetchBotUsers, BOT_NAME, combineUsers, sortCombined, fmtElapsed, approxWords, WIKIPEDIA_LAUNCH, resolvePage, editorBreakdown, editStats, recordHolders, topUsers, editDuration, fmtDuration,
 } from './lib/core.js';
 
@@ -19,13 +19,13 @@ const el = {
   tlTitle: $('tl-title'), tlLegend: $('tl-legend'), tlWrap: $('tl-wrap'), tlCanvas: $('tl-canvas'), brush: $('tl-brush'), tip: $('tl-tip'),
   wordsWrap: $('words-wrap'), wordsCanvas: $('words-canvas'),
   tlTable: $('tl-table'), tlCsv: $('tl-csv'), tableView: document.querySelector('.table-view'),
-  anchorSeg: $('anchor-seg'), anchorLabel: $('anchor-label'), usersNote: $('users-note'), users: $('users'), usersSub: $('users-sub'), sortSeg: $('sort-seg'), dirBtn: $('dir-btn'),
+  anchorSeg: $('anchor-seg'), anchorLabel: $('anchor-label'), users: $('users'), usersSub: $('users-sub'), sortSeg: $('sort-seg'), dirBtn: $('dir-btn'),
   usersStats: $('users-stats'), usersKey: $('users-key'), usersEnd: $('users-end'), usersCsv: $('users-csv'),
 };
 
 const state = {
   pages: [],           // loaded pages: { page, revisions, bots, allTimeTop, color }
-  get data() { return this.pages[0]; }, // the per-user chart shows page 1 for now
+  get data() { return this.pages[0]; }, // page 1, the default for anything not yet per-page
   fullStart: 0, fullEnd: 0,
   start: null, end: null, // null = full history
   gran: 'auto',
@@ -763,15 +763,6 @@ function renderTable() {
   el.tlTable.innerHTML = `<thead>${head}</thead><tbody>${rows.join('')}</tbody>`;
 }
 
-function comparisonCsv() {
-  const cols = ['edits', 'editors', 'bot_editors', 'ip_editors', 'hidden_name_editors', 'approx_word_count_at_end'];
-  return toCsv([
-    ['period_start_utc', 'period', ...state.pages.flatMap(p => cols.map(c => `${p.page.title}: ${c}`))],
-    ...tl.bins.map((b, i) => [new Date(b.start).toISOString(), fmtPeriod(b.start, tl.granularity),
-      ...tl.series.flatMap(bins => { const x = bins[i]; return [x.edits, x.editors, x.bots, x.ips, x.hidden, x.words]; })]),
-  ]);
-}
-
 function download(name, text) {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv' }));
@@ -779,21 +770,10 @@ function download(name, text) {
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
-const slug = (pages = [state.data]) => pages.map(p => p.page.title.replace(/[^\w-]+/g, '_')).join('-vs-');
-el.tlCsv.onclick = () => download(`${slug(state.pages)}-edits-per-${tl.granularity}.csv`,
-  tl.series.length > 1 ? comparisonCsv() : timelineCsv(tl));
-el.usersCsv.onclick = () => download(`${slug(state.pages)}-edits-per-user.csv`,
-  state.pages.length > 1 ? comparisonUsersCsv() : usersCsv(users.map(r => r.per[0])));
-
-function comparisonUsersCsv() {
-  const iso = t => (t == null ? '' : new Date(t).toISOString());
-  return toCsv([
-    ['user', 'anonymous', ...state.pages.flatMap(p => ['edits', 'first_edit_utc', 'last_edit_utc', 'duration'].map(c => `${p.page.title}: ${c}`))],
-    ...users.map(r => [r.user, r.anon ? 'yes' : 'no', ...r.per.flatMap(u => (u
-      ? [u.edits, iso(u.first), iso(u.last), fmtDuration(editDuration(u.first, u.last))]
-      : [0, '', '', '']))]),
-  ]);
-}
+const slug = () => state.pages.map(p => p.page.title.replace(/[^\w-]+/g, '_')).join('-vs-');
+const titles = () => state.pages.map(p => p.page.title);
+el.tlCsv.onclick = () => download(`${slug()}-edits-per-${tl.granularity}.csv`, timelineCsv(tl, titles()));
+el.usersCsv.onclick = () => download(`${slug()}-edits-per-user.csv`, usersCsv(users, titles()));
 
 // ------------------------------------------------------------------ users chart
 
