@@ -36,6 +36,8 @@ let loadCtrl = null;
 
 // ------------------------------------------------------------------ loading
 
+const BASE_TITLE = document.title;
+
 el.form.addEventListener('submit', e => {
   e.preventDefault();
   const { lang, title } = parsePageInput(el.page.value, el.lang.value.trim() || 'en');
@@ -67,6 +69,7 @@ async function lookup(title, lang, initial) {
 }
 
 function showChooser(res, lang) {
+  document.title = `${res.title} (choose a page) · ${BASE_TITLE}`;
   const sel = el.chooserSelect;
   el.chooserMsg.textContent = res.status === 'disambiguation'
     ? `“${res.title}” could mean several things. Choose an article:`
@@ -134,6 +137,7 @@ async function load(title, lang, initial) {
     state.sort = initial.sort ?? 'edits';
     state.dir = initial.dir ?? null;
     el.page.value = data.page.title;
+    document.title = `${data.page.title} · ${BASE_TITLE}`;
     setStatus('');
     el.results.hidden = false;
     renderAll();
