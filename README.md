@@ -19,6 +19,9 @@ npm run serve            # python3 -m http.server 8000
 ```
 
 - Enter a title or paste a Wikipedia URL. Set the wiki language (`en`, `de`, …) if it isn't in the URL.
+- If the title is a disambiguation page (e.g. "Mercury"), a dropdown lists the articles it links to,
+  grouped by the page's own section headings. The disambiguation page itself is the last option.
+  If no page has that title, the dropdown lists search results instead.
 - By default the range runs from page creation to now. **Auto** picks the finest unit that gives at
   most 300 columns. A unit that would need more than 4,000 columns is greyed out until you narrow the range.
 - **Zoom:** drag across either chart to select a range, or click a column to zoom into that

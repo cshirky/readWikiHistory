@@ -1,7 +1,7 @@
 import {
   GRANULARITIES, SORTS, HIDDEN_USER, parsePageInput, fetchRevisions, buildTimeline, buildUsers, sortUsers,
   autoGranularity, estimateBins, addUnits, floorTo, fmtPeriod, fmtDate, fmtDateTime, fmtInt, timelineCsv, usersCsv,
-  fetchBotUsers, BOT_NAME, editorBreakdown, editStats, recordHolders, topUsers, editDuration, fmtDuration,
+  fetchBotUsers, BOT_NAME, resolvePage, editorBreakdown, editStats, recordHolders, topUsers, editDuration, fmtDuration,
 } from './lib/core.js';
 
 const MAX_BINS = 4000;   // granularities that would exceed this are disabled
@@ -12,6 +12,7 @@ const RECENT_MS = 7 * 864e5; // names turn blue if the user edited within this w
 const $ = id => document.getElementById(id);
 const el = {
   form: $('page-form'), page: $('page-input'), lang: $('lang-input'), load: $('load-btn'), status: $('status'),
+  chooser: $('chooser'), chooserMsg: $('chooser-msg'), chooserSelect: $('chooser-select'),
   results: $('results'), pageLink: $('page-link'), summary: $('summary-line'),
   granSeg: $('gran-seg'), start: $('start-input'), end: $('end-input'), reset: $('reset-btn'),
   tlTitle: $('tl-title'), tlWrap: $('tl-wrap'), tlCanvas: $('tl-canvas'), brush: $('tl-brush'), tip: $('tl-tip'),
@@ -40,8 +41,67 @@ el.form.addEventListener('submit', e => {
   const { lang, title } = parsePageInput(el.page.value, el.lang.value.trim() || 'en');
   if (!title) return;
   el.lang.value = lang;
-  load(title, lang, {});
+  lookup(title, lang, {});
 });
+
+// Check whether the title is a disambiguation page (or missing) before fetching its history.
+async function lookup(title, lang, initial) {
+  loadCtrl?.abort();
+  const ctrl = (loadCtrl = new AbortController());
+  el.chooser.hidden = true;
+  setStatus(`Looking up “${title}”…`);
+  el.load.disabled = true;
+  try {
+    const res = await resolvePage(title, { lang, signal: ctrl.signal });
+    if (ctrl.signal.aborted) return;
+    if (res.status === 'ok') return load(res.title, lang, initial);
+    if (!res.options.length) throw new Error(`No page titled “${title}” on ${lang}.wikipedia.org, and no search results.`);
+    showChooser(res, lang);
+    el.results.hidden = true;
+    setStatus('');
+  } catch (err) {
+    if (err.name !== 'AbortError') setStatus(err.message, true);
+  } finally {
+    if (loadCtrl === ctrl) el.load.disabled = false;
+  }
+}
+
+function showChooser(res, lang) {
+  const sel = el.chooserSelect;
+  el.chooserMsg.textContent = res.status === 'disambiguation'
+    ? `“${res.title}” could mean several things. Choose an article:`
+    : `There's no page titled “${res.title}”. Pages matching your search:`;
+  const opt = (value, text) => {
+    const o = document.createElement('option');
+    o.value = value;
+    o.textContent = text.length > 120 ? text.slice(0, 119) + '…' : text;
+    return o;
+  };
+  const placeholder = opt('', `Choose one of ${res.options.length} pages…`);
+  placeholder.disabled = placeholder.selected = true;
+  sel.replaceChildren(placeholder);
+  let group = null, label = null;
+  for (const o of res.options) {
+    if (o.group !== label || !group) {
+      label = o.group;
+      group = document.createElement('optgroup');
+      group.label = label || (res.status === 'disambiguation' ? 'Most common' : 'Search results');
+      sel.append(group);
+    }
+    // Descriptions usually start with the title ("Mercury (planet), the closest…"); don't repeat it.
+    const desc = o.desc.startsWith(o.title) ? o.desc.slice(o.title.length).replace(/^[\s,:–—-]+/, '') : o.desc;
+    group.append(opt(o.title, desc ? `${o.title} — ${desc}` : o.title));
+  }
+  if (res.status === 'disambiguation') {
+    const g = document.createElement('optgroup');
+    g.label = 'Other';
+    g.append(opt(res.title, `${res.title} (the disambiguation page itself)`));
+    sel.append(g);
+  }
+  sel.onchange = () => sel.value && load(sel.value, lang, {});
+  el.chooser.hidden = false;
+  sel.focus();
+}
 
 async function load(title, lang, initial) {
   loadCtrl?.abort();
@@ -638,7 +698,7 @@ function initFromUrl() {
   const lang = p.get('lang') || 'en';
   el.page.value = page;
   el.lang.value = lang;
-  load(page, lang, {
+  lookup(page, lang, {
     start: fromLocalInput(p.get('from')) ?? undefined,
     end: p.get('to') ? fromLocalInput(p.get('to'), true) : undefined,
     gran: GRANULARITIES.includes(p.get('g')) ? p.get('g') : undefined,
