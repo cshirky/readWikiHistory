@@ -1,7 +1,7 @@
 import {
   GRANULARITIES, SORTS, HIDDEN_USER, parsePageInput, fetchRevisions, buildTimeline, buildUsers, sortUsers,
   autoGranularity, estimateBins, addUnits, floorTo, fmtPeriod, fmtDate, fmtDateTime, fmtInt, timelineCsv, usersCsv,
-  fetchBotUsers, BOT_NAME, resolvePage, editorBreakdown, editStats, recordHolders, topUsers, editDuration, fmtDuration,
+  fetchBotUsers, BOT_NAME, fmtYearsDays, WIKIPEDIA_LAUNCH, resolvePage, editorBreakdown, editStats, recordHolders, topUsers, editDuration, fmtDuration,
 } from './lib/core.js';
 
 const MAX_BINS = 4000;   // granularities that would exceed this are disabled
@@ -13,7 +13,7 @@ const $ = id => document.getElementById(id);
 const el = {
   form: $('page-form'), page: $('page-input'), lang: $('lang-input'), load: $('load-btn'), status: $('status'),
   chooser: $('chooser'), chooserMsg: $('chooser-msg'), chooserSelect: $('chooser-select'),
-  results: $('results'), pageLink: $('page-link'), summary: $('summary-line'),
+  results: $('results'), pageLink: $('page-link'), summary: $('summary-line'), summary2: $('summary-line-2'),
   granSeg: $('gran-seg'), start: $('start-input'), end: $('end-input'), reset: $('reset-btn'),
   tlTitle: $('tl-title'), tlWrap: $('tl-wrap'), tlCanvas: $('tl-canvas'), brush: $('tl-brush'), tip: $('tl-tip'),
   bytesWrap: $('bytes-wrap'), bytesCanvas: $('bytes-canvas'),
@@ -179,9 +179,13 @@ function renderAll() {
     page.redirectedFrom ? `Redirected from “${page.redirectedFrom}”` : null,
     `${page.lang}.wikipedia.org`,
     `${fmtInt(all.length)} edits by ${fmtInt(editors)} editors`,
-    `created ${fmtDateTime(state.fullStart)} UTC`,
-    `current size ${fmtInt(all.at(-1).size)} bytes`,
   ].filter(Boolean).join(' · ');
+  el.summary2.textContent = [
+    `Created ${fmtDate(state.fullStart)}`,
+    `${fmtYearsDays(WIKIPEDIA_LAUNCH, state.fullStart)} after Wikipedia launched`,
+    `${fmtYearsDays(state.fullStart, Date.now())} ago`,
+    `current size ${fmtInt(all.at(-1).size)} bytes`,
+  ].join(' · ');
 
   renderControls();
   const inRange = users.reduce((s, u) => s + u.edits, 0);
@@ -618,6 +622,8 @@ function renderUsers() {
     key.push(`<span class="u-record">Bold</span>: most edits of anyone up to that ${when}`);
     if (users.some(u => allTimeTop.has(u.user))) key.push('<span class="u-top">Underlined</span>: most edits of all time');
   }
+  const creator = state.data.revisions[0].user;
+  if (creator && users.some(u => u.user === creator)) key.push('<span class="u-creator">Green</span>: created the page');
   if (users.some(isRecent)) key.push('<span class="u-recent">Blue</span>: edited in the last 7 days');
   if (anyBots) key.push('<span class="u-bot">Orange</span>: bot account');
   el.usersKey.innerHTML = key.join(' · ');
@@ -641,12 +647,15 @@ function renderUsers() {
 function userRow(u, i) {
   const { bots, allTimeTop, page } = state.data;
   const cls = ['u-link'];
-  // Blue (recent) wins over orange (bot); the "bot" tag still marks the account type.
-  if (isRecent(u)) cls.push('u-recent');
+  // One colour per name: green (creator) beats blue (recent) beats orange (bot).
+  // The "creator" and "bot" tags still show what the colour doesn't.
+  const isCreator = !u.hidden && u.user === state.data.revisions[0].user;
+  if (isCreator) cls.push('u-creator');
+  else if (isRecent(u)) cls.push('u-recent');
   else if (bots.has(u.user)) cls.push('u-bot');
   if (ulist.records.has(u.user)) cls.push('u-record');
   if (ulist.timeSort && allTimeTop.has(u.user)) cls.push('u-top');
-  const tags = (u.anon ? '<span class="u-tag">IP</span>' : '') + (bots.has(u.user) ? '<span class="u-tag">bot</span>' : '');
+  const tags = (isCreator ? '<span class="u-tag">creator</span>' : '') + (u.anon ? '<span class="u-tag">IP</span>' : '') + (bots.has(u.user) ? '<span class="u-tag">bot</span>' : '');
   const name = u.hidden
     ? `<span class="muted">${HIDDEN_USER}</span>`
     : `<a class="${cls.join(' ')}" href="https://${page.lang}.wikipedia.org/wiki/Special:Contributions/${encodeURIComponent(u.user)}" target="_blank" rel="noopener" title="${esc(u.user)}">${esc(u.user)}</a>${tags}`;

@@ -28,7 +28,8 @@ npm run serve            # python3 -m http.server 8000
   period. You can also set the From/To fields. **Full history** resets the range.
 - The per-user list has columns for user, first edit, last edit, duration and edits. Duration is the
   time from first to last edit in years, months and days, rounded up to a whole day; a single edit
-  counts as 1 day. Names are blue if the user edited in the last 7 days.
+  counts as 1 day. The page's creator is shown in green with a "creator" tag. Other names are blue if the
+  user edited in the last 7 days. A name gets one colour: green beats blue, and blue beats orange.
 - The per-user list loads more rows as you scroll. Its header shows the mean, median and mode of
   edits per editor. Bot accounts are shown in orange (blue wins if they edited recently) and tagged "bot". A bot is an account in
   Wikipedia's bot group, or any name ending in "bot".

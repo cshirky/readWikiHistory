@@ -187,9 +187,9 @@ th { position: sticky; top: 0; background: var(--surface-1); color: var(--text-s
 }
 
 /* ---------- user marks */
-:root { --bot-text: #c2410c; --recent-text: #1c5cab; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bot-text: #f0915f; --recent-text: #6da7ec; } }
-:root[data-theme="dark"] { --bot-text: #f0915f; --recent-text: #6da7ec; }
+:root { --bot-text: #c2410c; --recent-text: #1c5cab; --creator-text: #0a7a0a; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bot-text: #f0915f; --recent-text: #6da7ec; --creator-text: #5cc85c; } }
+:root[data-theme="dark"] { --bot-text: #f0915f; --recent-text: #6da7ec; --creator-text: #5cc85c; }
 .u-bot, .u-name a.u-bot { color: var(--bot-text); }
 .u-record { font-weight: 700; }
 .u-top, .u-name a.u-top { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; }
@@ -204,3 +204,5 @@ th { position: sticky; top: 0; background: var(--surface-1); color: var(--text-s
 .chooser { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; padding: 12px 14px; background: var(--surface-1); border: 1px solid var(--border); border-left: 3px solid var(--series-1); border-radius: 8px; }
 .chooser label { font-size: 14px; }
 .chooser select { width: 100%; max-width: 100%; }
+.u-creator, .u-name a.u-creator { color: var(--creator-text); }
+.chooser[hidden] { display: none; }
