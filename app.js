@@ -55,7 +55,18 @@ let pageRanks = [];    // per page: Map user → rank by edits on that page (tie
 let pageUsers = [];    // per page: that page's users within the range
 let loadCtrl = null;
 
+// Tab-title prefix naming where this copy is hosted, so environments are tellable apart in the tab bar.
+const ENV = (() => {
+  const h = location.hostname;
+  if (h === 'localhost' || h === '127.0.0.1' || h === '[::1]' || h === '' || /^(192\.168|10)\./.test(h) || h.endsWith('.local')) return 'LCL';
+  if (h.endsWith('.github.io')) return 'GH';
+  if (h.endsWith('.vercel.app')) return 'VCL';
+  if (/(\.run\.app|\.appspot\.com|\.web\.app|\.firebaseapp\.com|storage\.googleapis\.com)$/.test(h)) return 'GC';
+  return '';
+})();
+const withEnv = t => (ENV ? `${ENV} · ${t}` : t);
 const BASE_TITLE = document.title;
+document.title = withEnv(BASE_TITLE);
 const pageColor = k => css(`--page-${k + 1}`);
 // A page's display name; adds the wiki when the compared pages span more than one language.
 const pageName = p => (new Set(state.pages.map(q => q.page.lang)).size > 1 ? `${p.page.title} (${p.page.lang})` : p.page.title);
@@ -223,7 +234,7 @@ async function lookupAll(initial) {
     if (ctrl.signal.aborted) return;
     const waiting = active.filter(s => !s.resolved);
     if (waiting.length) {
-      document.title = `${waiting.map(s => s.input.value.trim()).join(', ')} (choose a page) · ${BASE_TITLE}`;
+      document.title = withEnv(`${waiting.map(s => s.input.value.trim()).join(', ')} (choose a page) · ${BASE_TITLE}`);
       el.results.hidden = true;
       setStatus(waiting.length === active.length && active.length === 1 ? '' : 'Choose from the list above to continue.');
       return;
@@ -331,7 +342,7 @@ async function loadAll(ctrl, initial) {
   el.pagesNote.textContent = 'Averages are mean edits per editor. The median and mode are 1 on nearly every page, so they aren\'t shown.'
     + (odd.length ? ` Exceptions here: ${odd.map(([p, s]) => `${pageName(p)} (median ${num(s.median)}, mode ${num(s.mode)})`).join('; ')}.` : '');
   el.pagesNote.hidden = false;
-  document.title = `${state.pages.map(pageName).join(' vs ')} · ${BASE_TITLE}`;
+  document.title = withEnv(`${state.pages.map(pageName).join(' vs ')} · ${BASE_TITLE}`);
   setStatus('');
   el.results.hidden = false;
   renderAll();
