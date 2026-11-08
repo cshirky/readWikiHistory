@@ -67,6 +67,8 @@ left out because they're 1 on nearly every page, and names any page here where t
     then the others in page order. All bars share one scale.
   - Under the name of anyone who edited more than one page: their rank by edits on each of those
     pages, e.g. "#6 of 282 on Clay Shirky". Ties share a rank.
+  - In a Total edits sort, the sort page's line shows only its bullet, and its rank line is left
+    out because the row number gives it. With Show filtering the list, that rank line comes back.
   - **Sort using**, above the chart, picks which page drives the sort and the name marks (page 1 by
     default). Users who never edited that page go last. Each page's creator is tagged on that
     page's line.

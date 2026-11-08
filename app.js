@@ -990,11 +990,12 @@ function nameCell(r) {
 }
 
 // First / last / duration / bar for one user on one page.
-function statCells(u, k) {
+function statCells(u, k, showName = true) {
   const multi = state.pages.length > 1;
+  const name = esc(pageName(state.pages[k]));
   const bar = multi ? ` style="background:var(--page-${state.pages[k].color + 1});width:` : ' style="width:';
   return `
-    ${multi ? `<span class="u-page" role="cell" title="${esc(pageName(state.pages[k]))}"><span class="u-page-name">${esc(pageName(state.pages[k]))}</span>${swatch(k)}</span>` : ''}
+    ${multi ? `<span class="u-page" role="cell" title="${name}">${showName ? `<span class="u-page-name">${name}</span>` : ''}${swatch(k)}</span>` : ''}
     <span class="u-date u-first" role="cell" title="First edit">${fmtDate(u.first)}</span>
     <span class="u-date u-last" role="cell" title="Last edit">${fmtDate(u.last)}</span>
     <span class="u-dur" role="cell" title="Time from first to last edit, rounded up to whole days">${fmtDuration(editDuration(u.first, u.last))}</span>
@@ -1011,11 +1012,16 @@ function userRow(r, i) {
   }
   // The sort page's line first, then any other pages this user edited, in page order.
   const order = [state.anchor, ...r.per.map((_, k) => k).filter(k => k !== state.anchor)];
+  // In an edits sort the sort page's line drops its page name (it's named above the chart), and,
+  // unless Show filters the list, its rank too: the row's place already gives it.
+  const plain = k => state.sort === 'edits' && k === state.anchor;
+  const rankShown = k => !plain(k) || showMode() !== 'all';
   const subs = order.filter(k => r.per[k]).map(k =>
-    `<div class="u-sub${k === state.anchor ? ' u-anchor' : ''}">${statCells(r.per[k], k)}</div>`).join('');
+    `<div class="u-sub${k === state.anchor ? ' u-anchor' : ''}">${statCells(r.per[k], k, !plain(k))}</div>`).join('');
   // Editors of more than one page: their rank by edits on each page they edited, in line order.
   const edited = order.filter(k => r.per[k]);
-  const ranks = edited.length > 1 && !r.hidden ? `<span class="u-ranks">${edited.map(k =>
+  const ranked = edited.filter(rankShown);
+  const ranks = edited.length > 1 && !r.hidden ? `<span class="u-ranks">${ranked.map(k =>
     `#${fmtInt(pageRanks[k].get(r.user))} of ${fmtInt(pageUsers[k].length)} on ${esc(pageName(state.pages[k]))}`).join('<br>')}</span>` : '';
   return `<div class="u-row u-multi" role="row">
     <span class="u-rank" role="cell">${i + 1}</span>
