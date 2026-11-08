@@ -54,10 +54,14 @@ Wikipedia's launch it was created, how long ago that was, and its current approx
   - Each page keeps a colour: page 1 blue, page 2 orange, page 3 aqua.
   - The column chart puts the pages' columns side by side in each period, and the line chart draws
     one line per page. The hover shows the pages in columns.
-  - The per-user chart lists every editor of any of the pages, with one line per page under each
-    name. All bars share one scale. A page the user didn't edit shows "no edits in this range".
-  - **Sort using** picks which page drives the sort and the name marks (page 1 by default). Users
-    who never edited that page go last. Each page's creator is tagged on that page's line.
+  - The per-user chart lists every editor of any of the pages. Each name gets one line per page
+    they edited, marked with that page's coloured bullet: the sort page's line first, then the
+    others in page order. All bars share one scale.
+  - **Sort using**, above the chart, picks which page drives the sort and the name marks (page 1 by
+    default). Users who never edited that page go last. Each page's creator is tagged on that
+    page's line.
+  - **Only show users common to all pages** hides anyone who didn't edit every page in the range.
+    The CSV download follows it.
 - **Time range and granularity:**
   - The range runs from creation (the earliest page's, when comparing) to now.
   - **Auto** picks the finest unit that gives at most 300 periods, divided by the number of pages.
@@ -74,6 +78,7 @@ Wikipedia's launch it was created, how long ago that was, and its current approx
   | `g` | `hour`, `day`, `week`, `month` or `year` (omitted for Auto) |
   | `sort`, `dir` | `edits`, `first`, `last` or `duration`; `asc` or `desc` |
   | `by` | `2` or `3` to sort the per-user chart using page 2 or 3 |
+  | `common` | `1` to show only users common to all pages |
 
 ## Notes on the numbers
 

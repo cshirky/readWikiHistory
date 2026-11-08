@@ -188,7 +188,10 @@ th.t-page { text-align: center; }
 /* ---------- per-user chart */
 .users-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 10px; }
 .sort-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-#anchor-seg[hidden], #anchor-label[hidden] { display: none; }
+.users-compare { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 4px 0 12px; }
+.users-compare[hidden] { display: none; }
+.check { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); cursor: pointer; }
+.check input { margin: 0; accent-color: var(--series-1); }
 #anchor-seg button[aria-checked="true"] .swatch { box-shadow: 0 0 0 1.5px #fff; }
 #users-stats b { font-weight: 600; color: var(--text-secondary); }
 #users-stats > div + div { margin-top: 2px; }
@@ -231,8 +234,7 @@ th.t-page { text-align: center; }
 .u-sub { display: grid; grid-template-columns: var(--u-cols); column-gap: 12px; align-items: center; }
 .u-sub .u-date, .u-sub .u-dur { color: var(--text-muted); }
 .u-sub.u-anchor .u-date, .u-sub.u-anchor .u-dur { color: var(--text-primary); }
-.u-sub .swatch { width: 8px; height: 8px; margin-right: 5px; }
-.u-absent .u-none { grid-column: 2 / -1; color: var(--text-muted); font-size: 12px; font-style: italic; }
+.u-sub .swatch { width: 8px; height: 8px; margin-right: 5px; border-radius: 50%; }
 .u-header .u-subs .u-sub { padding-left: 13px; }
 .u-header .u-subs .u-sub .u-first { margin-left: -13px; padding-left: 13px; }
 
@@ -256,5 +258,4 @@ th.t-page { text-align: center; }
   .u-row.u-multi { grid-template-columns: 28px minmax(0, 1fr); grid-template-areas: "rank name" "rank subs"; }
   .u-multi .u-subs { grid-area: subs; }
   .u-sub { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-areas: "first last dur" "bar bar bar"; }
-  .u-absent .u-none { grid-area: last / last / last / dur; }
 }

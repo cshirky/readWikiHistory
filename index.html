@@ -76,14 +76,17 @@
             <p class="muted small" id="users-key" hidden></p>
           </div>
           <div class="sort-controls">
-            <span class="muted small" id="anchor-label" hidden>Sort using</span>
-            <div class="seg" id="anchor-seg" role="radiogroup" aria-label="Sort and highlight using page" hidden></div>
             <span class="muted small">Sort by</span>
             <div class="seg" id="sort-seg" role="radiogroup" aria-label="Sort users by"></div>
             <button type="button" class="ghost icon" id="dir-btn" aria-label="Reverse sort direction"></button>
             <button type="button" class="ghost small" id="users-csv">Download CSV</button>
           </div>
         </figcaption>
+        <div class="users-compare" id="users-compare" hidden>
+          <span class="muted small">Sort using</span>
+          <div class="seg" id="anchor-seg" role="radiogroup" aria-label="Sort and highlight using page"></div>
+          <label class="check small"><input type="checkbox" id="common-only"> Only show users common to all pages</label>
+        </div>
         <div class="users" id="users" role="table" aria-label="Edits per user"></div>
         <p class="users-end muted small" id="users-end" aria-live="polite"></p>
       </figure>

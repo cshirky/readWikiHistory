@@ -19,7 +19,7 @@ const el = {
   tlTitle: $('tl-title'), tlLegend: $('tl-legend'), tlWrap: $('tl-wrap'), tlCanvas: $('tl-canvas'), brush: $('tl-brush'), tip: $('tl-tip'),
   wordsWrap: $('words-wrap'), wordsCanvas: $('words-canvas'),
   tlTable: $('tl-table'), tlCsv: $('tl-csv'), tableView: document.querySelector('.table-view'),
-  anchorSeg: $('anchor-seg'), anchorLabel: $('anchor-label'), users: $('users'), usersSub: $('users-sub'), sortSeg: $('sort-seg'), dirBtn: $('dir-btn'),
+  anchorSeg: $('anchor-seg'), usersCompare: $('users-compare'), commonOnly: $('common-only'), users: $('users'), usersSub: $('users-sub'), sortSeg: $('sort-seg'), dirBtn: $('dir-btn'),
   usersStats: $('users-stats'), usersKey: $('users-key'), usersEnd: $('users-end'), usersCsv: $('users-csv'),
 };
 
@@ -31,10 +31,12 @@ const state = {
   gran: 'auto',
   sort: 'edits', dir: null,
   anchor: 0,           // which page the per-user chart sorts and highlights by
+  common: false,       // per-user chart: only users who edited every page
   hover: -1,
 };
 let tl = null;         // current timeline { granularity, start, end, bins, series: [bins per page] }
 let users = [];        // current sorted user rows: { user, anon, hidden, per: [stats | null per page] }
+let shownRows = [];    // users after the common-to-all-pages filter
 let pageUsers = [];    // per page: that page's users within the range
 let loadCtrl = null;
 
@@ -231,6 +233,7 @@ async function loadAll(ctrl, initial) {
     state.sort = initial.sort ?? 'edits';
     state.dir = initial.dir ?? null;
     state.anchor = initial.anchor ?? 0;
+    state.common = initial.common ?? false;
   }
   want.forEach(({ s }, i) => { s.input.value = datas[i].page.title; });
   document.title = `${state.pages.map(p => p.page.title).join(' vs ')} · ${BASE_TITLE}`;
@@ -354,7 +357,8 @@ function renderControls() {
   el.dirBtn.title = dirLabel();
 
   const multi = state.pages.length > 1;
-  el.anchorSeg.hidden = el.anchorLabel.hidden = !multi;
+  el.usersCompare.hidden = !multi;
+  el.commonOnly.checked = state.common;
   el.anchorSeg.replaceChildren(...(multi ? state.pages : []).map((p, k) => {
     const b = document.createElement('button');
     b.type = 'button';
@@ -366,6 +370,8 @@ function renderControls() {
     return b;
   }));
 }
+
+el.commonOnly.onchange = () => { state.common = el.commonOnly.checked; renderUsers(); syncUrl(); };
 
 function setAnchor(k) {
   state.anchor = k;
@@ -773,7 +779,7 @@ function download(name, text) {
 const slug = () => state.pages.map(p => p.page.title.replace(/[^\w-]+/g, '_')).join('-vs-');
 const titles = () => state.pages.map(p => p.page.title);
 el.tlCsv.onclick = () => download(`${slug()}-edits-per-${tl.granularity}.csv`, timelineCsv(tl, titles()));
-el.usersCsv.onclick = () => download(`${slug()}-edits-per-user.csv`, usersCsv(users, titles()));
+el.usersCsv.onclick = () => download(`${slug()}-edits-per-user.csv`, usersCsv(shownRows, titles()));
 
 // ------------------------------------------------------------------ users chart
 
@@ -790,6 +796,7 @@ function renderUsers() {
   const a = state.anchor;
   const anchor = state.pages[a];
   ulist.shown = 0;
+  shownRows = multi && state.common ? users.filter(r => r.per.every(Boolean)) : users;
   ulist.max = pageUsers.flat().reduce((m, u) => Math.max(m, u.edits), 1); // one scale for every page
   ulist.timeSort = state.sort === 'first' || state.sort === 'last'; // bold/underline apply to date sorts only
   ulist.records = ulist.timeSort ? recordHolders(pageUsers[a], state.sort) : new Set();
@@ -881,12 +888,10 @@ function userRow(r, i) {
       <span class="u-name" role="cell">${nameCell(r)}</span>${statCells(r.per[0], 0)}
     </div>`;
   }
-  const subs = r.per.map((u, k) => {
-    const cls = `u-sub${k === state.anchor ? ' u-anchor' : ''}`;
-    return u
-      ? `<div class="${cls}">${statCells(u, k)}</div>`
-      : `<div class="${cls} u-absent"><span class="u-date u-first">${swatch(k)}—</span><span class="u-none">no edits in this range</span></div>`;
-  }).join('');
+  // The sort page's line first, then any other pages this user edited, in page order.
+  const order = [state.anchor, ...r.per.map((_, k) => k).filter(k => k !== state.anchor)];
+  const subs = order.filter(k => r.per[k]).map(k =>
+    `<div class="u-sub${k === state.anchor ? ' u-anchor' : ''}">${statCells(r.per[k], k)}</div>`).join('');
   return `<div class="u-row u-multi" role="row">
     <span class="u-rank" role="cell">${i + 1}</span>
     <span class="u-name" role="cell">${nameCell(r)}</span>
@@ -895,20 +900,21 @@ function userRow(r, i) {
 }
 
 function appendUsers() {
-  const batch = users.slice(ulist.shown, ulist.shown + USER_BATCH);
+  const batch = shownRows.slice(ulist.shown, ulist.shown + USER_BATCH);
   el.users.insertAdjacentHTML('beforeend', batch.map((u, j) => userRow(u, ulist.shown + j)).join(''));
   ulist.shown += batch.length;
-  el.usersEnd.textContent = ulist.shown < users.length
-    ? `Showing ${fmtInt(ulist.shown)} of ${fmtInt(users.length)} — scroll for more`
-    : `All ${fmtInt(users.length)} editors shown`;
+  const n = shownRows.length;
+  el.usersEnd.textContent = !n ? 'No editor edited every page in this range'
+    : ulist.shown < n ? `Showing ${fmtInt(ulist.shown)} of ${fmtInt(n)} — scroll for more`
+    : `All ${fmtInt(n)} editors shown`;
   // The observer only fires on changes, so keep filling while the end marker is still in view.
   requestAnimationFrame(() => {
-    if (ulist.shown < users.length && el.usersEnd.getBoundingClientRect().top < innerHeight + 800) appendUsers();
+    if (ulist.shown < shownRows.length && el.usersEnd.getBoundingClientRect().top < innerHeight + 800) appendUsers();
   });
 }
 
 new IntersectionObserver(entries => {
-  if (entries[0].isIntersecting && state.data && ulist.shown < users.length) appendUsers();
+  if (entries[0].isIntersecting && state.data && ulist.shown < shownRows.length) appendUsers();
 }, { rootMargin: '800px 0px' }).observe(el.usersEnd);
 
 // ------------------------------------------------------------------ URL state
@@ -927,6 +933,7 @@ function syncUrl() {
   if (state.sort !== 'edits') p.set('sort', state.sort);
   if (state.dir) p.set('dir', state.dir);
   if (state.anchor) p.set('by', String(state.anchor + 1));
+  if (state.common && state.pages.length > 1) p.set('common', '1');
   history.replaceState(null, '', `?${p}`);
 }
 
@@ -950,6 +957,7 @@ function initFromUrl() {
     sort: SORTS[p.get('sort')] ? p.get('sort') : undefined,
     dir: ['asc', 'desc'].includes(p.get('dir')) ? p.get('dir') : undefined,
     anchor: ['2', '3'].includes(p.get('by')) ? +p.get('by') - 1 : undefined,
+    common: p.get('common') === '1' || undefined,
   });
 }
 initFromUrl();
