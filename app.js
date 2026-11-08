@@ -142,6 +142,18 @@ function updateSlotUi() {
 
 el.compareCount.onchange = () => setSlotCount(+el.compareCount.value + 1);
 
+// Phones get shorter wording so the closed dropdown isn't cut off.
+const narrow = matchMedia('(max-width: 480px)');
+function labelCompareCount() {
+  for (const o of el.compareCount.options) {
+    const n = +o.value;
+    const what = `page${n > 1 ? 's' : ''} or language${n > 1 ? 's' : ''}`;
+    if (n) o.textContent = narrow.matches ? `Add ${n} ${what}` : `Compare to ${n} additional ${what}`;
+  }
+}
+narrow.addEventListener('change', labelCompareCount);
+labelCompareCount();
+
 el.form.addEventListener('submit', e => {
   e.preventDefault();
   lookupAll({});
