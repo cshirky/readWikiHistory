@@ -26,12 +26,12 @@ const $ = id => document.getElementById(id);
 const el = {
   form: $('page-form'), slots: $('slots'), compareCount: $('compare-count'),
   load: $('load-btn'), status: $('status'),
-  results: $('results'), summary: $('summary'),
+  results: $('results'),
   granSeg: $('gran-seg'), start: $('start-input'), end: $('end-input'), reset: $('reset-btn'),
   tlTitle: $('tl-title'), tlLegend: $('tl-legend'), tlWrap: $('tl-wrap'), tlCanvas: $('tl-canvas'), brush: $('tl-brush'), tip: $('tl-tip'),
   wordsWrap: $('words-wrap'), wordsCanvas: $('words-canvas'),
   tlTable: $('tl-table'), tlCsv: $('tl-csv'), tableView: document.querySelector('.table-view'),
-  anchorSeg: $('anchor-seg'), usersCompare: $('users-compare'), commonOnly: $('common-only'), users: $('users'), usersSub: $('users-sub'), sortSeg: $('sort-seg'), dirBtn: $('dir-btn'),
+  anchorSeg: $('anchor-seg'), usersCompare: $('users-compare'), showSeg: $('show-seg'), usersNote: $('users-note'), users: $('users'), usersSub: $('users-sub'), sortSeg: $('sort-seg'), dirBtn: $('dir-btn'),
   usersStats: $('users-stats'), usersKey: $('users-key'), usersEnd: $('users-end'), usersCsv: $('users-csv'),
 };
 
@@ -43,12 +43,13 @@ const state = {
   gran: 'auto',
   sort: 'edits', dir: null,
   anchor: 0,           // which page the per-user chart sorts and highlights by
-  common: false,       // per-user chart: only users who edited every page
+  show: 'all',         // per-user chart: 'all' editors, 'shared' (edited 2+ pages) or 'every' (edited all pages)
   hover: -1,
 };
 let tl = null;         // current timeline { granularity, start, end, bins, series: [bins per page] }
 let users = [];        // current sorted user rows: { user, anon, hidden, per: [stats | null per page] }
-let shownRows = [];    // users after the common-to-all-pages filter
+let shownRows = [];    // users after the Show filter
+let pageRanks = [];    // per page: Map user → rank by edits on that page (ties share a rank)
 let pageUsers = [];    // per page: that page's users within the range
 let loadCtrl = null;
 
@@ -79,6 +80,7 @@ function addSlot(value = '', lang = slots[0]?.lang.value || 'en') {
         <span>Language</span>
         <select>${LANGS.map(([code, name]) => `<option value="${code}">${code} · ${esc(name)}</option>`).join('')}</select>
       </label>
+      <div class="slot-info"></div>
       ${k ? `<button type="button" class="ghost icon remove" aria-label="Remove page ${k + 1}" title="Remove this page">×</button>` : '<span class="remove-spacer" hidden></span>'}
     </div>
     <div class="chooser" hidden>
@@ -87,7 +89,7 @@ function addSlot(value = '', lang = slots[0]?.lang.value || 'en') {
     </div>`;
   el.slots.append(wrap);
   const slot = {
-    wrap, input: wrap.querySelector('input'), lang: wrap.querySelector('.lang select'), chooser: wrap.querySelector('.chooser'),
+    wrap, input: wrap.querySelector('input'), lang: wrap.querySelector('.lang select'), info: wrap.querySelector('.slot-info'), chooser: wrap.querySelector('.chooser'),
     chooserMsg: wrap.querySelector('.chooser-msg'), select: wrap.querySelector('.chooser select'), resolved: null,
   };
   slot.chooserMsg.htmlFor = slot.select.id = `chooser-${id}`;
@@ -99,6 +101,34 @@ function addSlot(value = '', lang = slots[0]?.lang.value || 'en') {
   slots.push(slot);
   updateSlotUi();
   return slot;
+}
+
+// After loading, a box shows its page's full URL, size and age in place of the search field.
+// "Change" brings the search field back.
+function showSlotInfo(slot, { page, revisions }) {
+  const created = page.created ?? revisions[0].ts;
+  const editors = new Set(revisions.map(r => r.user ?? HIDDEN_USER)).size;
+  const url = pageUrl(page);
+  const shown = `https://${page.lang}.wikipedia.org/wiki/${page.title.replace(/ /g, '_')}`;
+  const line1 = [
+    `<a class="slot-url" href="${url}" target="_blank" rel="noopener">${esc(shown)}</a>`,
+    `${fmtInt(revisions.length)} edits by ${fmtInt(editors)} editors`,
+    page.redirectedFrom ? `redirected from “${esc(page.redirectedFrom)}”` : null,
+  ].filter(Boolean).join(' · ');
+  const line2 = [
+    `Created ${fmtDate(created)}`,
+    `${fmtElapsed(WIKIPEDIA_LAUNCH, created)} after Wikipedia launched`,
+    `${fmtElapsed(created, Date.now())} ago`,
+    `current ~word count ${fmtInt(approxWords(revisions.at(-1).size))}`,
+  ].join(' · ');
+  slot.info.innerHTML = `<p>${line1}<button type="button" class="ghost small change">Change</button></p>
+    <p class="muted slot-created">${line2}</p>`;
+  slot.info.querySelector('.change').onclick = () => {
+    slot.wrap.classList.remove('loaded');
+    slot.input.focus();
+    slot.input.select();
+  };
+  slot.wrap.classList.add('loaded');
 }
 
 function setSlotLang(slot, code) {
@@ -280,9 +310,12 @@ async function loadAll(ctrl, initial) {
     state.sort = initial.sort ?? 'edits';
     state.dir = initial.dir ?? null;
     state.anchor = initial.anchor ?? 0;
-    state.common = initial.common ?? false;
+    state.show = initial.show ?? 'all';
   }
-  want.forEach(({ s }, i) => { s.input.value = datas[i].page.title; });
+  want.forEach(({ s }, i) => {
+    s.input.value = datas[i].page.title;
+    showSlotInfo(s, datas[i]);
+  });
   document.title = `${state.pages.map(pageName).join(' vs ')} · ${BASE_TITLE}`;
   setStatus('');
   el.results.hidden = false;
@@ -315,9 +348,9 @@ function renderAll() {
   if (state.anchor >= state.pages.length) state.anchor = 0;
   pageUsers = state.pages.map(p => buildUsers(p.revisions, { start, end }));
   users = sortCombined(combineUsers(pageUsers), state.sort, state.dir, state.anchor);
+  pageRanks = pageUsers.map(rankByEdits);
   state.hover = -1;
 
-  renderSummary();
   renderControls();
   const multi = state.pages.length > 1;
   const span = `${fmtDate(start)} → ${fmtDate(end)}`;
@@ -327,9 +360,11 @@ function renderAll() {
   el.tlLegend.hidden = !multi;
   const ranged = state.start != null || state.end != null ? ' (selected range)' : '';
   if (multi) {
+    const n = state.pages.length;
     const shared = users.filter(r => r.per.filter(Boolean).length > 1).length;
-    el.usersSub.textContent = `${fmtInt(users.length)} different editors across ${state.pages.length} pages · `
-      + `${fmtInt(shared)} edited more than one · ${span}${ranged}`;
+    const every = users.filter(r => r.per.every(Boolean)).length;
+    el.usersSub.textContent = `${fmtInt(users.length)} different editors across ${n} pages · `
+      + `${fmtInt(shared)} edited 2 or more${n > 2 ? ` · ${fmtInt(every)} edited all ${n}` : ''} · ${span}${ranged}`;
   } else {
     const inRange = pageUsers[0].reduce((s, u) => s + u.edits, 0);
     el.usersSub.textContent = `${fmtInt(inRange)} edits by ${fmtInt(users.length)} editors (${subtotals(editorBreakdown(users, state.data.bots))}) · ${span}${ranged}`;
@@ -341,30 +376,6 @@ function renderAll() {
 }
 
 const pageUrl = page => `https://${page.lang}.wikipedia.org/wiki/${encodeURIComponent(page.title.replace(/ /g, '_'))}`;
-
-function renderSummary() {
-  const multi = state.pages.length > 1;
-  el.summary.innerHTML = state.pages.map(({ page, revisions, color }) => {
-    const created = page.created ?? revisions[0].ts;
-    const editors = new Set(revisions.map(r => r.user ?? HIDDEN_USER)).size;
-    const line1 = [
-      page.redirectedFrom ? `Redirected from “${esc(page.redirectedFrom)}”` : null,
-      `${page.lang}.wikipedia.org`,
-      `${fmtInt(revisions.length)} edits by ${fmtInt(editors)} editors`,
-    ].filter(Boolean).join(' · ');
-    const line2 = [
-      `Created ${fmtDate(created)}`,
-      `${fmtElapsed(WIKIPEDIA_LAUNCH, created)} after Wikipedia launched`,
-      `${fmtElapsed(created, Date.now())} ago`,
-      `current ~word count ${fmtInt(approxWords(revisions.at(-1).size))}`,
-    ].join(' · ');
-    return `<div class="summary-page">
-      <h2>${multi ? `<span class="swatch" style="background:var(--page-${color + 1})"></span>` : ''}<a href="${pageUrl(page)}" target="_blank" rel="noopener">${esc(page.title)}</a></h2>
-      <p class="muted">${line1}</p>
-      <p class="muted">${line2}</p>
-    </div>`;
-  }).join('');
-}
 
 function renderControls() {
   const { start, end } = range();
@@ -405,7 +416,22 @@ function renderControls() {
 
   const multi = state.pages.length > 1;
   el.usersCompare.hidden = !multi;
-  el.commonOnly.checked = state.common;
+  const n = state.pages.length;
+  const count = f => fmtInt(users.filter(f).length);
+  const shows = [
+    ['all', `All editors (${fmtInt(users.length)})`],
+    ['shared', `Edited 2+ pages (${count(r => r.per.filter(Boolean).length > 1)})`],
+    ...(n > 2 ? [['every', `Edited all ${n} pages (${count(r => r.per.every(Boolean))})`]] : []),
+  ];
+  el.showSeg.replaceChildren(...(multi ? shows : []).map(([key, label]) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.setAttribute('role', 'radio');
+    b.setAttribute('aria-checked', String(showMode() === key));
+    b.textContent = label;
+    b.onclick = () => { state.show = key; renderControls(); renderUsers(); syncUrl(); };
+    return b;
+  }));
   el.anchorSeg.replaceChildren(...(multi ? state.pages : []).map((p, k) => {
     const b = document.createElement('button');
     b.type = 'button';
@@ -419,7 +445,16 @@ function renderControls() {
   }));
 }
 
-el.commonOnly.onchange = () => { state.common = el.commonOnly.checked; renderUsers(); syncUrl(); };
+// With two pages, "edited all pages" is the same as "edited 2+ pages".
+const showMode = () => (state.show === 'every' && state.pages.length === 2 ? 'shared' : state.show);
+
+// Rank each editor by edits on one page; ties share a rank (1, 2, 2, 4).
+function rankByEdits(list) {
+  const sorted = [...list].sort((x, y) => y.edits - x.edits);
+  const ranks = new Map();
+  sorted.forEach((u, i) => ranks.set(u.user, i && u.edits === sorted[i - 1].edits ? ranks.get(sorted[i - 1].user) : i + 1));
+  return ranks;
+}
 
 function setAnchor(k) {
   state.anchor = k;
@@ -844,7 +879,9 @@ function renderUsers() {
   const a = state.anchor;
   const anchor = state.pages[a];
   ulist.shown = 0;
-  shownRows = multi && state.common ? users.filter(r => r.per.every(Boolean)) : users;
+  const mode = multi ? showMode() : 'all';
+  shownRows = mode === 'every' ? users.filter(r => r.per.every(Boolean))
+    : mode === 'shared' ? users.filter(r => r.per.filter(Boolean).length > 1) : users;
   ulist.max = pageUsers.flat().reduce((m, u) => Math.max(m, u.edits), 1); // one scale for every page
   ulist.timeSort = state.sort === 'first' || state.sort === 'last'; // bold/underline apply to date sorts only
   ulist.records = ulist.timeSort ? recordHolders(pageUsers[a], state.sort) : new Set();
@@ -852,13 +889,16 @@ function renderUsers() {
   ulist.creators = state.pages.map(p => p.revisions[0].user);
 
   // Stats: one line per page when comparing.
+  const stats = pageUsers.map(editStats);
+  const odd = state.pages.map((p, k) => [p, stats[k]]).filter(([, s]) => s.median !== 1 || s.mode !== 1);
+  el.usersNote.textContent = 'The median and mode of edits per editor are 1 on nearly every page, so only the mean is shown.'
+    + (odd.length ? ` Exceptions here: ${odd.map(([p, s]) => `${pageName(p)} (median ${num(s.median)}, mode ${num(s.mode)})`).join('; ')}.` : '');
   el.usersStats.innerHTML = state.pages.map((p, k) => {
-    const s = editStats(pageUsers[k]);
-    const stats = `<b>mean</b> ${num(s.mean)} · <b>median</b> ${num(s.median)} · <b>mode</b> ${num(s.mode)}`;
-    if (!multi) return `Edits per editor: ${stats}`;
+    const mean = `<b>mean</b> ${num(stats[k].mean)}`;
+    if (!multi) return `Edits per editor: ${mean}`;
     const edits = pageUsers[k].reduce((t, u) => t + u.edits, 0);
     return `<div>${swatch(k)}<b>${esc(pageName(p))}</b>: ${fmtInt(edits)} edits by ${fmtInt(pageUsers[k].length)} editors `
-      + `(${subtotals(editorBreakdown(pageUsers[k], p.bots))}) · edits per editor: ${stats}</div>`;
+      + `(${subtotals(editorBreakdown(pageUsers[k], p.bots))}) · edits per editor: ${mean}</div>`;
   }).join('');
 
   const onAnchor = users.filter(r => r.per[a]).map(r => r.per[a]);
@@ -887,7 +927,7 @@ function renderUsers() {
     ? `<div class="u-row u-multi u-header" role="row">
         <span class="u-rank" role="columnheader">#</span>
         <span class="u-name" role="columnheader">User</span>
-        <div class="u-subs"><div class="u-sub">${cols}</div></div>
+        <div class="u-subs"><div class="u-sub"><span class="u-page" role="columnheader">Page</span>${cols}</div></div>
       </div>`
     : `<div class="u-row u-header" role="row">
         <span class="u-rank" role="columnheader">#</span>
@@ -922,7 +962,8 @@ function statCells(u, k) {
   const multi = state.pages.length > 1;
   const bar = multi ? ` style="background:var(--page-${state.pages[k].color + 1});width:` : ' style="width:';
   return `
-    <span class="u-date u-first" role="cell" title="First edit">${multi ? swatch(k) : ''}${fmtDate(u.first)}</span>
+    ${multi ? `<span class="u-page" role="cell" title="${esc(pageName(state.pages[k]))}"><span class="u-page-name">${esc(pageName(state.pages[k]))}</span>${swatch(k)}</span>` : ''}
+    <span class="u-date u-first" role="cell" title="First edit">${fmtDate(u.first)}</span>
     <span class="u-date u-last" role="cell" title="Last edit">${fmtDate(u.last)}</span>
     <span class="u-dur" role="cell" title="Time from first to last edit, rounded up to whole days">${fmtDuration(editDuration(u.first, u.last))}</span>
     <span class="u-barcell" role="cell"><span class="u-bar"${bar}calc((100% - 3.5em) * ${u.edits / ulist.max})"></span><span class="u-count">${fmtInt(u.edits)}</span>${
@@ -940,9 +981,13 @@ function userRow(r, i) {
   const order = [state.anchor, ...r.per.map((_, k) => k).filter(k => k !== state.anchor)];
   const subs = order.filter(k => r.per[k]).map(k =>
     `<div class="u-sub${k === state.anchor ? ' u-anchor' : ''}">${statCells(r.per[k], k)}</div>`).join('');
+  // Editors of more than one page: their rank by edits on each page they edited, in line order.
+  const edited = order.filter(k => r.per[k]);
+  const ranks = edited.length > 1 && !r.hidden ? `<span class="u-ranks">${edited.map(k =>
+    `#${fmtInt(pageRanks[k].get(r.user))} of ${fmtInt(pageUsers[k].length)} on ${esc(pageName(state.pages[k]))}`).join('<br>')}</span>` : '';
   return `<div class="u-row u-multi" role="row">
     <span class="u-rank" role="cell">${i + 1}</span>
-    <span class="u-name" role="cell">${nameCell(r)}</span>
+    <span class="u-name" role="cell">${nameCell(r)}${ranks}</span>
     <div class="u-subs">${subs}</div>
   </div>`;
 }
@@ -952,7 +997,7 @@ function appendUsers() {
   el.users.insertAdjacentHTML('beforeend', batch.map((u, j) => userRow(u, ulist.shown + j)).join(''));
   ulist.shown += batch.length;
   const n = shownRows.length;
-  el.usersEnd.textContent = !n ? 'No editor edited every page in this range'
+  el.usersEnd.textContent = !n ? `No editor edited ${showMode() === 'every' ? 'every page' : 'more than one page'} in this range`
     : ulist.shown < n ? `Showing ${fmtInt(ulist.shown)} of ${fmtInt(n)} — scroll for more`
     : `All ${fmtInt(n)} editors shown`;
   // The observer only fires on changes, so keep filling while the end marker is still in view.
@@ -981,7 +1026,7 @@ function syncUrl() {
   if (state.sort !== 'edits') p.set('sort', state.sort);
   if (state.dir) p.set('dir', state.dir);
   if (state.anchor) p.set('by', String(state.anchor + 1));
-  if (state.common && state.pages.length > 1) p.set('common', '1');
+  if (state.pages.length > 1 && showMode() !== 'all') p.set('show', showMode());
   history.replaceState(null, '', `?${p}`);
 }
 
@@ -1001,7 +1046,7 @@ function initFromUrl() {
     sort: SORTS[p.get('sort')] ? p.get('sort') : undefined,
     dir: ['asc', 'desc'].includes(p.get('dir')) ? p.get('dir') : undefined,
     anchor: +p.get('by') >= 2 && +p.get('by') <= slots.length ? +p.get('by') - 1 : undefined,
-    common: p.get('common') === '1' || undefined,
+    show: ['shared', 'every'].includes(p.get('show')) ? p.get('show') : p.get('common') === '1' ? 'every' : undefined,
   });
 }
 initFromUrl();

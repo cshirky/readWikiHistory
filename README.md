@@ -11,8 +11,10 @@ It's a static page with no dependencies and no build step. Revision data comes s
 
 ## What it shows
 
-**Page summary.** For each page: its wiki, edit and editor counts, creation date, how long after
-Wikipedia's launch it was created, how long ago that was, and its current approximate word count.
+**Page summary.** Once loaded, each search box turns into its page's full Wikipedia URL (a link)
+with its edit and editor counts. Under that: creation date, how long after Wikipedia's launch it was
+created, how long ago that was, and its current approximate word count. **Change** brings the search
+box back. The page heading links to the live site.
 
 **Edit timeline.**
 - A column chart of edits per hour, day, week, month or year.
@@ -25,8 +27,9 @@ Wikipedia's launch it was created, how long ago that was, and its current approx
 - One row per editor, with first edit, last edit, duration and an edits bar.
   - Duration is the time from first to last edit in years, months and days, rounded up to a whole
     day. A single edit counts as 1 day.
-- The header shows totals with bot, IP and hidden-username subtotals, plus the mean, median and mode
-  of edits per editor.
+- The header shows totals with bot, IP and hidden-username subtotals, plus the mean edits per
+  editor. A note explains that the median and mode are left out because they're 1 on nearly every
+  page, and names any page here where they aren't.
 - Sort by total edits (the default, most first), first edit, last edit or duration. Click the active
   sort, or ↑/↓, to reverse it.
 - Name marks:
@@ -58,13 +61,15 @@ Wikipedia's launch it was created, how long ago that was, and its current approx
   - The column chart puts the pages' columns side by side in each period, and the line chart draws
     one line per page. The hover shows the pages in columns.
   - The per-user chart lists every editor of any of the pages. Each name gets one line per page
-    they edited, marked with that page's coloured bullet: the sort page's line first, then the
-    others in page order. All bars share one scale.
+    they edited, labelled with the page's name and coloured bullet: the sort page's line first,
+    then the others in page order. All bars share one scale.
+  - Under the name of anyone who edited more than one page: their rank by edits on each of those
+    pages, e.g. "#6 of 282 on Clay Shirky". Ties share a rank.
   - **Sort using**, above the chart, picks which page drives the sort and the name marks (page 1 by
     default). Users who never edited that page go last. Each page's creator is tagged on that
     page's line.
-  - **Only show users common to all pages** hides anyone who didn't edit every page in the range.
-    The CSV download follows it.
+  - **Show** picks All editors, Edited 2+ pages, or (with three or more pages) Edited all pages,
+    each with its count. The heading line also reports both counts. The CSV download follows it.
 - **Time range and granularity:**
   - The range runs from creation (the earliest page's, when comparing) to now.
   - **Auto** picks the finest unit that gives at most 300 periods, divided by the number of pages.
@@ -81,7 +86,7 @@ Wikipedia's launch it was created, how long ago that was, and its current approx
   | `g` | `hour`, `day`, `week`, `month` or `year` (omitted for Auto) |
   | `sort`, `dir` | `edits`, `first`, `last` or `duration`; `asc` or `desc` |
   | `by` | `2` to `5` to sort the per-user chart using that page |
-  | `common` | `1` to show only users common to all pages |
+  | `show` | `shared` (edited 2+ pages) or `every` (edited all pages); older links' `common=1` means `every` |
 
 ## Notes on the numbers
 

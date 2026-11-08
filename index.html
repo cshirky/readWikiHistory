@@ -11,7 +11,7 @@
 <body>
   <main class="viz-root">
     <header class="masthead">
-      <h1>Wikipedia edit history</h1>
+      <h1><a href="https://cshirky.github.io/readWikiHistory/">Wikipedia edit history</a></h1>
       <form id="page-form" class="page-form" autocomplete="off">
         <div id="slots" class="slots"></div>
         <div class="form-actions">
@@ -29,8 +29,6 @@
     </header>
 
     <section id="results" hidden>
-      <div class="summary" id="summary"></div>
-
       <div class="controls" role="toolbar" aria-label="Timeline controls">
         <button type="button" id="reset-btn" class="ghost">Full history</button>
         <div class="seg" id="gran-seg" role="radiogroup" aria-label="Granularity"></div>
@@ -70,6 +68,7 @@
         <figcaption class="users-head">
           <div>
             <h3>Edits per user</h3>
+            <p class="muted small" id="users-note"></p>
             <p class="muted small" id="users-sub"></p>
             <p class="small" id="users-stats"></p>
             <p class="muted small" id="users-key" hidden></p>
@@ -84,7 +83,8 @@
         <div class="users-compare" id="users-compare" hidden>
           <span class="muted small">Sort using</span>
           <div class="seg" id="anchor-seg" role="radiogroup" aria-label="Sort and highlight using page"></div>
-          <label class="check small"><input type="checkbox" id="common-only"> Only show users common to all pages</label>
+          <span class="muted small">Show</span>
+          <div class="seg" id="show-seg" role="radiogroup" aria-label="Which editors to show"></div>
         </div>
         <div class="users" id="users" role="table" aria-label="Edits per user"></div>
         <p class="users-end muted small" id="users-end" aria-live="polite"></p>
