@@ -17,7 +17,7 @@ bots, IP addresses and hidden usernames. Each group has its average (mean) edits
 that: creation date, the article's age (years and months, or months and days if under a year), and
 its current approximate word count to the nearest 100. A note explains that the median and mode are
 left out because they're 1 on nearly every page, and names any page here where they aren't.
-**Change** brings the search box back. The page heading links to the live site.
+**Change** brings the search box back. The page heading links back to a fresh start page on the same host.
 
 **Edit timeline.**
 - A column chart of edits per hour, day, week, month or year.
