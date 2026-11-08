@@ -1,7 +1,7 @@
 import {
   GRANULARITIES, SORTS, HIDDEN_USER, parsePageInput, fetchRevisions, buildTimeline, buildUsers,
   autoGranularity, estimateBins, addUnits, floorTo, fmtPeriod, fmtDate, fmtInt, timelineCsv, usersCsv,
-  fetchBotUsers, BOT_NAME, combineUsers, sortCombined, fmtElapsed, approxWords, WIKIPEDIA_LAUNCH, resolvePage, editorBreakdown, editStats, recordHolders, topUsers, editDuration, fmtDuration,
+  fetchBotUsers, BOT_NAME, combineUsers, sortCombined, fmtAge, approxWords, resolvePage, editorBreakdown, editStats, recordHolders, topUsers, editDuration, fmtDuration,
 } from './lib/core.js';
 
 const MAX_BINS = 4000;   // granularities that would exceed this are disabled
@@ -31,8 +31,8 @@ const el = {
   tlTitle: $('tl-title'), tlLegend: $('tl-legend'), tlWrap: $('tl-wrap'), tlCanvas: $('tl-canvas'), brush: $('tl-brush'), tip: $('tl-tip'),
   wordsWrap: $('words-wrap'), wordsCanvas: $('words-canvas'),
   tlTable: $('tl-table'), tlCsv: $('tl-csv'), tableView: document.querySelector('.table-view'),
-  anchorSeg: $('anchor-seg'), usersCompare: $('users-compare'), showSeg: $('show-seg'), usersNote: $('users-note'), users: $('users'), usersSub: $('users-sub'), sortSeg: $('sort-seg'), dirBtn: $('dir-btn'),
-  usersStats: $('users-stats'), usersKey: $('users-key'), usersEnd: $('users-end'), usersCsv: $('users-csv'),
+  anchorSeg: $('anchor-seg'), usersCompare: $('users-compare'), showSeg: $('show-seg'), pagesNote: $('pages-note'), users: $('users'), usersSub: $('users-sub'), sortSeg: $('sort-seg'), dirBtn: $('dir-btn'),
+  usersKey: $('users-key'), usersEnd: $('users-end'), usersCsv: $('users-csv'),
 };
 
 const state = {
@@ -105,21 +105,28 @@ function addSlot(value = '', lang = slots[0]?.lang.value || 'en') {
 
 // After loading, a box shows its page's full URL, size and age in place of the search field.
 // "Change" brings the search field back.
-function showSlotInfo(slot, { page, revisions }) {
+function showSlotInfo(slot, { page, revisions, bots }) {
   const created = page.created ?? revisions[0].ts;
-  const editors = new Set(revisions.map(r => r.user ?? HIDDEN_USER)).size;
   const url = pageUrl(page);
+  // Logged-in people vs. everyone else (bots, IP addresses, hidden usernames), over the whole history.
+  const all = buildUsers(revisions);
+  const isPerson = u => !u.hidden && !u.anon && !bots.has(u.user);
+  const people = all.filter(isPerson), others = all.filter(u => !isPerson(u));
+  const edits = list => list.reduce((t, u) => t + u.edits, 0);
+  const avg = list => (list.length ? (edits(list) / list.length).toFixed(2) : '—');
+  const other = editorBreakdown(others, bots);
   const shown = `https://${page.lang}.wikipedia.org/wiki/${page.title.replace(/ /g, '_')}`;
   const line1 = [
     `<a class="slot-url" href="${url}" target="_blank" rel="noopener">${esc(shown)}</a>`,
-    `${fmtInt(revisions.length)} edits by ${fmtInt(editors)} editors`,
+    `${fmtInt(edits(people))} edits by ${fmtInt(people.length)} logged-in users (avg. ${avg(people)}) / `
+      + `${fmtInt(edits(others))} edits by ${fmtInt(other.bots)} bots, ${fmtInt(other.ips)} IP addresses, `
+      + `${fmtInt(other.hidden)} hidden usernames (avg. ${avg(others)})`,
     page.redirectedFrom ? `redirected from “${esc(page.redirectedFrom)}”` : null,
   ].filter(Boolean).join(' · ');
   const line2 = [
     `Created ${fmtDate(created)}`,
-    `${fmtElapsed(WIKIPEDIA_LAUNCH, created)} after Wikipedia launched`,
-    `${fmtElapsed(created, Date.now())} ago`,
-    `current ~word count ${fmtInt(approxWords(revisions.at(-1).size))}`,
+    `Article is ${fmtAge(created, Date.now())} old`,
+    `~word count ${fmtInt(Math.round(approxWords(revisions.at(-1).size) / 100) * 100)}`,
   ].join(' · ');
   slot.info.innerHTML = `<p>${line1}<button type="button" class="ghost small change">Change</button></p>
     <p class="muted slot-created">${line2}</p>`;
@@ -316,6 +323,11 @@ async function loadAll(ctrl, initial) {
     s.input.value = datas[i].page.title;
     showSlotInfo(s, datas[i]);
   });
+  // The averages above are means; say why the median and mode aren't shown.
+  const odd = state.pages.map(p => [p, editStats(buildUsers(p.revisions))]).filter(([, s]) => s.median !== 1 || s.mode !== 1);
+  el.pagesNote.textContent = 'Averages are mean edits per editor. The median and mode are 1 on nearly every page, so they aren\'t shown.'
+    + (odd.length ? ` Exceptions here: ${odd.map(([p, s]) => `${pageName(p)} (median ${num(s.median)}, mode ${num(s.mode)})`).join('; ')}.` : '');
+  el.pagesNote.hidden = false;
   document.title = `${state.pages.map(pageName).join(' vs ')} · ${BASE_TITLE}`;
   setStatus('');
   el.results.hidden = false;
@@ -569,6 +581,18 @@ function drawCharts() {
   drawWords();
 }
 
+// Where period i's columns sit: the first column's left edge, column width and the gap between pages.
+function columnGeom(sx, i, n) {
+  const b = tl.bins[i];
+  const x0 = sx.x(b.start), slot = sx.x(b.end) - x0;
+  const gap = slot >= 6 ? 2 : slot >= 3 ? 1 : 0;
+  const avail = slot - gap;
+  const inner = n > 1 ? (avail / n >= 8 ? 2 : avail / n >= 4 ? 1 : 0) : 0;
+  const bw = Math.max(1, Math.min(24, (avail - inner * (n - 1)) / n));
+  const groupW = bw * n + inner * (n - 1);
+  return { x: x0 + (slot - groupW) / 2, bw, inner };
+}
+
 function drawTimeline() {
   const { ctx, width, height } = setupCanvas(el.tlCanvas);
   const sx = xScale(width);
@@ -601,13 +625,8 @@ function drawTimeline() {
   let maxIdx = -1;
   if (n === 1) maxIdx = tl.bins.findIndex(b => b.edits === maxEdits);
   tl.bins.forEach((b, i) => {
-    const x0 = sx.x(b.start), slot = sx.x(b.end) - x0;
-    const gap = slot >= 6 ? 2 : slot >= 3 ? 1 : 0;
-    const avail = slot - gap;
-    const inner = n > 1 ? (avail / n >= 8 ? 2 : avail / n >= 4 ? 1 : 0) : 0;
-    const bw = Math.max(1, Math.min(24, (avail - inner * (n - 1)) / n));
-    const groupW = bw * n + inner * (n - 1);
-    let bx = x0 + (slot - groupW) / 2;
+    const { x, bw, inner } = columnGeom(sx, i, n);
+    let bx = x;
     tl.series.forEach((bins, k) => {
       const v = bins[i].edits;
       if (v) {
@@ -736,14 +755,39 @@ function binAt(clientX, canvas) {
   return lo;
 }
 
-function setHover(i, clientX, clientY) {
+// Which page's column in period i is nearest the pointer: columns with edits first.
+// The word-count strip has no columns, so there it only answers when there's one page.
+function pageAt(i, clientX, canvas) {
+  const n = tl.series.length;
+  if (i < 0) return -1;
+  if (n === 1) return 0;
+  if (canvas !== el.tlCanvas) return -1;
+  const rect = canvas.getBoundingClientRect();
+  const { x, bw, inner } = columnGeom(xScale(rect.width), i, n);
+  const px = clientX - rect.left;
+  const dist = k => Math.abs(x + k * (bw + inner) + bw / 2 - px);
+  const ks = [...Array(n).keys()];
+  const withEdits = ks.filter(k => tl.series[k][i].edits);
+  return (withEdits.length ? withEdits : ks).reduce((best, k) => (dist(k) < dist(best) ? k : best));
+}
+
+// Wikipedia's own history page, starting at the beginning of period i (oldest edits of the period).
+const fmtStamp = ts => new Date(ts).toISOString().replace(/\D/g, '').slice(0, 14);
+function historyUrl(k, i) {
+  const { page } = state.pages[k];
+  const edits = tl.series[k][i].edits;
+  const q = new URLSearchParams({ title: page.title, action: 'history', dir: 'prev', offset: fmtStamp(tl.bins[i].start), limit: String(Math.max(50, Math.min(500, edits))) });
+  return `https://${page.lang}.wikipedia.org/w/index.php?${q}`;
+}
+
+function setHover(i, clientX, clientY, canvas = el.tlCanvas) {
   if (i !== state.hover) {
     state.hover = i;
     drawCharts();
   }
   if (i < 0) { el.tip.hidden = true; return; }
   const b = tl.bins[i];
-  const canZoom = tl.granularity !== 'hour';
+  const target = pageAt(i, clientX, canvas);
   const ROWS = [
     ['Edits', x => fmtInt(x.edits)],
     ['Editors', x => fmtInt(x.editors)],
@@ -767,7 +811,7 @@ function setHover(i, clientX, clientY) {
   el.tip.innerHTML = `
     <div class="t-head">${fmtPeriod(b.start, tl.granularity)}</div>
     ${body}
-    ${canZoom ? '<div class="t-hint">Click to zoom into this period</div>' : ''}`;
+    ${target < 0 ? '' : `<div class="t-hint">Click to open ${tl.series.length > 1 ? `${esc(pageName(state.pages[target]))}'s` : 'the'} Wikipedia history from ${fmtPeriod(b.start, tl.granularity)}</div>`}`;
   el.tip.hidden = false;
   const card = el.tip.offsetParent.getBoundingClientRect();
   const tw = el.tip.offsetWidth, th = el.tip.offsetHeight;
@@ -802,7 +846,7 @@ for (const canvas of [el.tlCanvas, el.wordsCanvas]) {
         return;
       }
     }
-    setHover(binAt(e.clientX, canvas), e.clientX, e.clientY);
+    setHover(binAt(e.clientX, canvas), e.clientX, e.clientY, canvas);
   });
   canvas.addEventListener('pointerleave', () => { if (!drag) setHover(-1); });
   canvas.addEventListener('pointerup', e => {
@@ -818,7 +862,8 @@ for (const canvas of [el.tlCanvas, el.wordsCanvas]) {
       zoomTo(tl.bins[a].start, tl.bins[b].end - 1);
     } else {
       const i = binAt(e.clientX, canvas);
-      if (i >= 0 && tl.granularity !== 'hour') zoomTo(tl.bins[i].start, tl.bins[i].end - 1);
+      const k = pageAt(i, e.clientX, canvas);
+      if (k >= 0) window.open(historyUrl(k, i), '_blank', 'noopener');
     }
   });
   canvas.addEventListener('pointercancel', () => { drag = null; el.brush.hidden = true; });
@@ -887,19 +932,6 @@ function renderUsers() {
   ulist.records = ulist.timeSort ? recordHolders(pageUsers[a], state.sort) : new Set();
   ulist.bots = new Set(state.pages.flatMap(p => [...p.bots]));
   ulist.creators = state.pages.map(p => p.revisions[0].user);
-
-  // Stats: one line per page when comparing.
-  const stats = pageUsers.map(editStats);
-  const odd = state.pages.map((p, k) => [p, stats[k]]).filter(([, s]) => s.median !== 1 || s.mode !== 1);
-  el.usersNote.textContent = 'The median and mode of edits per editor are 1 on nearly every page, so only the mean is shown.'
-    + (odd.length ? ` Exceptions here: ${odd.map(([p, s]) => `${pageName(p)} (median ${num(s.median)}, mode ${num(s.mode)})`).join('; ')}.` : '');
-  el.usersStats.innerHTML = state.pages.map((p, k) => {
-    const mean = `<b>mean</b> ${num(stats[k].mean)}`;
-    if (!multi) return `Edits per editor: ${mean}`;
-    const edits = pageUsers[k].reduce((t, u) => t + u.edits, 0);
-    return `<div>${swatch(k)}<b>${esc(pageName(p))}</b>: ${fmtInt(edits)} edits by ${fmtInt(pageUsers[k].length)} editors `
-      + `(${subtotals(editorBreakdown(pageUsers[k], p.bots))}) · edits per editor: ${mean}</div>`;
-  }).join('');
 
   const onAnchor = users.filter(r => r.per[a]).map(r => r.per[a]);
   const key = [];

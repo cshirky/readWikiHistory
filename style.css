@@ -143,6 +143,7 @@ button.icon { width: 36px; padding: 0; }
 .slot-info .slot-url { font-weight: 600; overflow-wrap: anywhere; }
 .slot-info .change { margin-left: 6px; color: var(--series-1); }
 .slot-info .slot-created { margin-top: 2px; font-size: 13px; }
+.pages-note { margin: 0; }
 .form-actions { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; }
 .compare-count { margin-right: auto; max-width: 100%; }
 
@@ -204,8 +205,6 @@ th.t-page { text-align: center; }
 .users-compare[hidden] { display: none; }
 #anchor-seg, #show-seg { flex-wrap: wrap; }
 #anchor-seg button[aria-checked="true"] .swatch { box-shadow: 0 0 0 1.5px #fff; }
-#users-stats b { font-weight: 600; color: var(--text-secondary); }
-#users-stats > div + div { margin-top: 2px; }
 .users {
   font-size: 13px;
   --u-cols: 84px 84px 96px minmax(80px, 1fr); /* first edit, last edit, duration, edits bar */

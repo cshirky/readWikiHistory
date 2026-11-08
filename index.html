@@ -14,6 +14,7 @@
       <h1><a href="https://cshirky.github.io/readWikiHistory/">Wikipedia edit history</a></h1>
       <form id="page-form" class="page-form" autocomplete="off">
         <div id="slots" class="slots"></div>
+        <p class="muted small pages-note" id="pages-note" hidden></p>
         <div class="form-actions">
           <select id="compare-count" class="compare-count" aria-label="Number of pages to compare">
             <option value="0">Just this page</option>
@@ -45,7 +46,7 @@
       <figure class="card">
         <figcaption>
           <h3 id="tl-title">Edits</h3>
-          <p class="muted small">Drag across the chart to zoom to a range · click a column to zoom into that period</p>
+          <p class="muted small">Drag across the chart to zoom to a range · click a column to open that page’s Wikipedia history from that period</p>
           <div class="legend" id="tl-legend" hidden></div>
         </figcaption>
         <div class="chart-wrap" id="tl-wrap">
@@ -68,9 +69,7 @@
         <figcaption class="users-head">
           <div>
             <h3>Edits per user</h3>
-            <p class="muted small" id="users-note"></p>
             <p class="muted small" id="users-sub"></p>
-            <p class="small" id="users-stats"></p>
             <p class="muted small" id="users-key" hidden></p>
           </div>
           <div class="sort-controls">

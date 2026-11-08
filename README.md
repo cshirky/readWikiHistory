@@ -11,10 +11,13 @@ It's a static page with no dependencies and no build step. Revision data comes s
 
 ## What it shows
 
-**Page summary.** Once loaded, each search box turns into its page's full Wikipedia URL (a link)
-with its edit and editor counts. Under that: creation date, how long after Wikipedia's launch it was
-created, how long ago that was, and its current approximate word count. **Change** brings the search
-box back. The page heading links to the live site.
+**Page summary.** Once loaded, each search box turns into its page's full Wikipedia URL (a link),
+followed by its whole-history editor counts in two groups: edits by logged-in users, and edits by
+bots, IP addresses and hidden usernames. Each group has its average (mean) edits per editor. Under
+that: creation date, the article's age (years and months, or months and days if under a year), and
+its current approximate word count to the nearest 100. A note explains that the median and mode are
+left out because they're 1 on nearly every page, and names any page here where they aren't.
+**Change** brings the search box back. The page heading links to the live site.
 
 **Edit timeline.**
 - A column chart of edits per hour, day, week, month or year.
@@ -27,9 +30,8 @@ box back. The page heading links to the live site.
 - One row per editor, with first edit, last edit, duration and an edits bar.
   - Duration is the time from first to last edit in years, months and days, rounded up to a whole
     day. A single edit counts as 1 day.
-- The header shows totals with bot, IP and hidden-username subtotals, plus the mean edits per
-  editor. A note explains that the median and mode are left out because they're 1 on nearly every
-  page, and names any page here where they aren't.
+- The header shows the number of editors in the selected range (with bot, IP and hidden-username
+  subtotals for one page, or how many edited 2+ and all pages when comparing).
 - Sort by total edits (the default, most first), first edit, last edit or duration. Click the active
   sort, or ↑/↓, to reverse it.
 - Name marks:
@@ -74,7 +76,9 @@ box back. The page heading links to the live site.
   - The range runs from creation (the earliest page's, when comparing) to now.
   - **Auto** picks the finest unit that gives at most 300 periods, divided by the number of pages.
   - Units that would need more than 4,000 periods are greyed out until you narrow the range.
-  - To zoom, drag across a chart, click a column, or set From/To. **Full history** resets.
+  - To zoom, drag across a chart or set From/To. **Full history** resets.
+  - Clicking a column opens that page’s history on Wikipedia in a new tab, starting at the beginning
+    of the period (when comparing, the nearest page’s column; the hover says which).
   - The per-user chart follows the selected range.
 - **Links:** the address keeps the whole view, so a copied link reopens it:
 
@@ -96,8 +100,6 @@ box back. The page heading links to the live site.
   references count toward the bytes.
 - Edits with suppressed usernames can't be told apart, so they're grouped as one
   "(username hidden)" editor.
-- "After Wikipedia launched" counts from English Wikipedia's launch on 2001-01-15, for every
-  language edition.
 - Heavily edited pages (50,000+ revisions) take a while: the API returns 500 revisions per request.
   Each page is downloaded once per visit, so switching or removing compared pages is instant.
 
