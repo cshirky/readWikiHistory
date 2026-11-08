@@ -547,7 +547,7 @@ function fromLocalInput(v, endOfMinute = false) {
 
 // ------------------------------------------------------------------ canvas charts
 
-const M = { l: 56, get r() { return state.showWords ? 56 : 14; }, t: 18, b: 28 };
+const M = { l: 56, r: 56, t: 18, b: 28 }; // r is reserved for the word-count axis so toggling it doesn't move the columns
 const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
 function setupCanvas(canvas) {
