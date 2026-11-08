@@ -15,14 +15,13 @@
       <form id="page-form" class="page-form" autocomplete="off">
         <div id="slots" class="slots"></div>
         <div class="form-actions">
-          <div class="compare-btns">
-            <button type="button" id="add-one" class="ghost small">+ Compare another page</button>
-            <button type="button" id="add-two" class="ghost small">+ Compare two other pages</button>
-          </div>
-          <label class="field lang">
-            <span>Wiki</span>
-            <input id="lang-input" type="text" value="en" size="4" pattern="[a-z0-9\-]+" title="Language code, e.g. en, de, fr">
-          </label>
+          <select id="compare-count" class="compare-count" aria-label="Number of pages to compare">
+            <option value="0">Just this page</option>
+            <option value="1">Compare to 1 additional page or language</option>
+            <option value="2">Compare to 2 additional pages or languages</option>
+            <option value="3">Compare to 3 additional pages or languages</option>
+            <option value="4">Compare to 4 additional pages or languages</option>
+          </select>
           <button type="submit" id="load-btn">Load history</button>
         </div>
       </form>

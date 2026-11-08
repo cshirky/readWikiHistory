@@ -1,6 +1,6 @@
 # readWikiHistory
 
-Charts the edit history of a Wikipedia page, or compares up to three pages side by side: when they
+Charts the edit history of a Wikipedia page, or compares up to five pages side by side: when they
 were edited, how big they grew, and who edited them.
 
 **Live:** https://cshirky.github.io/readWikiHistory/
@@ -43,15 +43,18 @@ Wikipedia's launch it was created, how long ago that was, and its current approx
 
 ## Using it
 
-- **Find a page:** enter a title or paste a Wikipedia URL. Set the Wiki field (`en`, `de`, …) for
-  other languages; a pasted URL sets it for you.
+- **Find a page:** enter a title or paste a Wikipedia URL. The Language list beside each search box
+  picks that page's Wikipedia (`en`, `de`, …); a pasted URL sets it for you. A new box starts with
+  page 1's language.
 - **Disambiguation:** if a title is a disambiguation page (e.g. "Mercury"), a dropdown lists the
   articles it links to, grouped under the page's own headings. The disambiguation page itself is the
   last option. If no page has that title, the dropdown lists search results instead.
 - **Compare pages:**
-  - "Compare another page" and "Compare two other pages" add search boxes, up to three pages in all.
-    × removes one.
-  - Each page keeps a colour: page 1 blue, page 2 orange, page 3 aqua.
+  - The "Compare to 1–4 additional pages or languages" list sets how many search boxes there are, up
+    to five pages in all. Lowering it drops empty boxes first, then the last ones. × removes one box.
+  - To compare languages, enter the same title in two boxes and pick a different language in each.
+    When the pages span more than one language, labels add the language code, e.g. "Clay Shirky (de)".
+  - Each page keeps a colour: page 1 blue, page 2 orange, page 3 aqua, page 4 yellow, page 5 magenta.
   - The column chart puts the pages' columns side by side in each period, and the line chart draws
     one line per page. The hover shows the pages in columns.
   - The per-user chart lists every editor of any of the pages. Each name gets one line per page
@@ -72,12 +75,12 @@ Wikipedia's launch it was created, how long ago that was, and its current approx
 
   | Parameter | Meaning |
   |---|---|
-  | `page`, `page2`, `page3` | page titles |
-  | `lang`, `lang2`, `lang3` | wiki language (`lang2`/`lang3` only when they differ from `lang`) |
+  | `page`, `page2` … `page5` | page titles |
+  | `lang`, `lang2` … `lang5` | wiki language (`lang2` and later only when they differ from `lang`) |
   | `from`, `to` | range, UTC, as `YYYY-MM-DDTHH:MM` |
   | `g` | `hour`, `day`, `week`, `month` or `year` (omitted for Auto) |
   | `sort`, `dir` | `edits`, `first`, `last` or `duration`; `asc` or `desc` |
-  | `by` | `2` or `3` to sort the per-user chart using page 2 or 3 |
+  | `by` | `2` to `5` to sort the per-user chart using that page |
   | `common` | `1` to show only users common to all pages |
 
 ## Notes on the numbers

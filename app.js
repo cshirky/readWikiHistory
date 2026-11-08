@@ -8,12 +8,24 @@ const MAX_BINS = 4000;   // granularities that would exceed this are disabled
 const AUTO_BINS = 300;   // "Auto" picks the finest unit at or under this (divided by the number of pages)
 const USER_BATCH = 150;  // user rows added per infinite-scroll step
 const RECENT_MS = 7 * 864e5; // names turn blue if the user edited within this window
-const MAX_PAGES = 3;
+const MAX_PAGES = 5;
+
+// Wikipedias offered in each search box's language list (largest first, roughly). A code from a
+// pasted URL or the address bar that isn't here gets added to that box's list.
+const LANGS = [
+  ['en', 'English'], ['de', 'Deutsch'], ['fr', 'Français'], ['es', 'Español'], ['ja', '日本語'],
+  ['ru', 'Русский'], ['it', 'Italiano'], ['zh', '中文'], ['pt', 'Português'], ['ar', 'العربية'],
+  ['fa', 'فارسی'], ['pl', 'Polski'], ['nl', 'Nederlands'], ['uk', 'Українська'], ['he', 'עברית'],
+  ['id', 'Bahasa Indonesia'], ['tr', 'Türkçe'], ['cs', 'Čeština'], ['sv', 'Svenska'], ['ko', '한국어'],
+  ['vi', 'Tiếng Việt'], ['fi', 'Suomi'], ['hu', 'Magyar'], ['ca', 'Català'], ['th', 'ไทย'],
+  ['hi', 'हिन्दी'], ['bn', 'বাংলা'], ['no', 'Norsk bokmål'], ['da', 'Dansk'], ['el', 'Ελληνικά'],
+  ['ro', 'Română'], ['sr', 'Српски'], ['ms', 'Bahasa Melayu'], ['simple', 'Simple English'],
+];
 
 const $ = id => document.getElementById(id);
 const el = {
-  form: $('page-form'), slots: $('slots'), addOne: $('add-one'), addTwo: $('add-two'),
-  lang: $('lang-input'), load: $('load-btn'), status: $('status'),
+  form: $('page-form'), slots: $('slots'), compareCount: $('compare-count'),
+  load: $('load-btn'), status: $('status'),
   results: $('results'), summary: $('summary'),
   granSeg: $('gran-seg'), start: $('start-input'), end: $('end-input'), reset: $('reset-btn'),
   tlTitle: $('tl-title'), tlLegend: $('tl-legend'), tlWrap: $('tl-wrap'), tlCanvas: $('tl-canvas'), brush: $('tl-brush'), tip: $('tl-tip'),
@@ -42,15 +54,18 @@ let loadCtrl = null;
 
 const BASE_TITLE = document.title;
 const pageColor = k => css(`--page-${k + 1}`);
+// A page's display name; adds the wiki when the compared pages span more than one language.
+const pageName = p => (new Set(state.pages.map(q => q.page.lang)).size > 1 ? `${p.page.title} (${p.page.lang})` : p.page.title);
 
 // ------------------------------------------------------------------ search boxes
 
 // One slot per search box: its input, its disambiguation chooser, and the title it resolved to.
 const slots = [];
+let slotIds = 0;       // keeps element ids unique as boxes come and go
 
-function addSlot(value = '') {
+function addSlot(value = '', lang = slots[0]?.lang.value || 'en') {
   if (slots.length >= MAX_PAGES) return null;
-  const k = slots.length;
+  const k = slots.length, id = slotIds++;
   const wrap = document.createElement('div');
   wrap.className = 'slot-wrap';
   wrap.innerHTML = `
@@ -58,7 +73,11 @@ function addSlot(value = '') {
       <span class="swatch" style="background:var(--page-${k + 1})" aria-hidden="true"></span>
       <label class="field grow">
         <span class="slot-label"></span>
-        <input type="text" placeholder="${k ? 'Another page to compare' : 'e.g. Ada Lovelace'}" ${k ? '' : 'required'}>
+        <input type="text" placeholder="${k ? 'Another page, or the same one in another language' : 'e.g. Ada Lovelace'}" ${k ? '' : 'required'}>
+      </label>
+      <label class="field lang">
+        <span>Language</span>
+        <select>${LANGS.map(([code, name]) => `<option value="${code}">${code} · ${esc(name)}</option>`).join('')}</select>
       </label>
       ${k ? `<button type="button" class="ghost icon remove" aria-label="Remove page ${k + 1}" title="Remove this page">×</button>` : '<span class="remove-spacer" hidden></span>'}
     </div>
@@ -68,28 +87,47 @@ function addSlot(value = '') {
     </div>`;
   el.slots.append(wrap);
   const slot = {
-    wrap, input: wrap.querySelector('input'), chooser: wrap.querySelector('.chooser'),
-    chooserMsg: wrap.querySelector('.chooser-msg'), select: wrap.querySelector('select'), resolved: null,
+    wrap, input: wrap.querySelector('input'), lang: wrap.querySelector('.lang select'), chooser: wrap.querySelector('.chooser'),
+    chooserMsg: wrap.querySelector('.chooser-msg'), select: wrap.querySelector('.chooser select'), resolved: null,
   };
-  slot.chooserMsg.htmlFor = slot.select.id = `chooser-${k}`;
+  slot.chooserMsg.htmlFor = slot.select.id = `chooser-${id}`;
   slot.input.value = value;
+  setSlotLang(slot, lang);
   slot.input.addEventListener('input', () => { slot.resolved = null; });
+  slot.lang.addEventListener('change', () => { slot.resolved = null; });
   wrap.querySelector('.remove')?.addEventListener('click', () => removeSlot(slot));
   slots.push(slot);
   updateSlotUi();
   return slot;
 }
 
-function removeSlot(slot) {
+function setSlotLang(slot, code) {
+  if (![...slot.lang.options].some(o => o.value === code)) slot.lang.add(new Option(code, code));
+  slot.lang.value = code;
+}
+
+function removeSlot(slot, reload = true) {
   slots.splice(slots.indexOf(slot), 1);
   slot.wrap.remove();
-  // Re-number the remaining boxes so colours stay in order: blue, then orange, then aqua.
+  // Re-number the remaining boxes so colours stay in order: blue, orange, aqua, yellow, magenta.
   slots.forEach((s, k) => {
     s.wrap.querySelector('.swatch').style.background = `var(--page-${k + 1})`;
     s.wrap.querySelector('.remove')?.setAttribute('aria-label', `Remove page ${k + 1}`);
   });
   updateSlotUi();
-  if (!el.results.hidden) lookupAll({ keepView: true }); // histories are cached, so this is quick
+  if (reload && !el.results.hidden) lookupAll({ keepView: true }); // histories are cached, so this is quick
+}
+
+// The "Compare to N additional pages" list: add empty boxes, or drop boxes (empty ones first).
+function setSlotCount(n) {
+  const before = slots.length;
+  while (slots.length < n) addSlot();
+  while (slots.length > n) {
+    const extra = slots.slice(1);
+    removeSlot(extra.find(s => !s.input.value.trim()) ?? extra.at(-1), false);
+  }
+  if (slots.length > before) slots[before].input.focus();
+  else if (!el.results.hidden) lookupAll({ keepView: true });
 }
 
 function updateSlotUi() {
@@ -99,13 +137,10 @@ function updateSlotUi() {
   slots.forEach((s, k) => {
     s.wrap.querySelector('.slot-label').textContent = multi ? `Page ${k + 1}` : 'Page title or URL';
   });
-  el.addOne.hidden = slots.length >= MAX_PAGES;
-  el.addTwo.hidden = slots.length > 1;
+  el.compareCount.value = String(slots.length - 1);
 }
 
-el.lang.addEventListener('input', () => slots.forEach(s => { s.resolved = null; }));
-el.addOne.onclick = () => addSlot()?.input.focus();
-el.addTwo.onclick = () => { const s = addSlot(); addSlot(); s?.input.focus(); };
+el.compareCount.onchange = () => setSlotCount(+el.compareCount.value + 1);
 
 el.form.addEventListener('submit', e => {
   e.preventDefault();
@@ -116,7 +151,6 @@ el.form.addEventListener('submit', e => {
 async function lookupAll(initial) {
   loadCtrl?.abort();
   const ctrl = (loadCtrl = new AbortController());
-  const defaultLang = el.lang.value.trim() || 'en';
   const active = slots.filter(s => s.input.value.trim());
   if (!active.length) return;
   setStatus('Looking up…');
@@ -124,7 +158,8 @@ async function lookupAll(initial) {
   try {
     await Promise.all(active.map(async s => {
       if (s.resolved) return;
-      const { lang, title } = parsePageInput(s.input.value, defaultLang);
+      const { lang, title } = parsePageInput(s.input.value, s.lang.value);
+      setSlotLang(s, lang); // a pasted URL's wiki wins over the list
       const res = await resolvePage(title, { lang, signal: ctrl.signal });
       if (res.status === 'ok') {
         s.resolved = { title: res.title, lang };
@@ -236,7 +271,7 @@ async function loadAll(ctrl, initial) {
     state.common = initial.common ?? false;
   }
   want.forEach(({ s }, i) => { s.input.value = datas[i].page.title; });
-  document.title = `${state.pages.map(p => p.page.title).join(' vs ')} · ${BASE_TITLE}`;
+  document.title = `${state.pages.map(pageName).join(' vs ')} · ${BASE_TITLE}`;
   setStatus('');
   el.results.hidden = false;
   renderAll();
@@ -276,7 +311,7 @@ function renderAll() {
   const span = `${fmtDate(start)} → ${fmtDate(end)}`;
   el.tlTitle.textContent = `Edits per ${tl.granularity} · ${span}`;
   el.tlLegend.innerHTML = multi ? state.pages.map(p =>
-    `<span class="legend-item"><span class="swatch" style="background:var(--page-${p.color + 1})"></span>${esc(p.page.title)}</span>`).join('') : '';
+    `<span class="legend-item"><span class="swatch" style="background:var(--page-${p.color + 1})"></span>${esc(pageName(p))}</span>`).join('') : '';
   el.tlLegend.hidden = !multi;
   const ranged = state.start != null || state.end != null ? ' (selected range)' : '';
   if (multi) {
@@ -364,8 +399,9 @@ function renderControls() {
     b.type = 'button';
     b.setAttribute('role', 'radio');
     b.setAttribute('aria-checked', String(state.anchor === k));
-    b.title = `Sort and highlight by ${p.page.title}`;
-    b.innerHTML = `<span class="swatch" style="background:var(--page-${p.color + 1})"></span>${esc(p.page.title.length > 22 ? p.page.title.slice(0, 21) + '…' : p.page.title)}`;
+    const name = pageName(p);
+    b.title = `Sort and highlight by ${name}`;
+    b.innerHTML = `<span class="swatch" style="background:var(--page-${p.color + 1})"></span>${esc(name.length > 22 ? name.slice(0, 21) + '…' : name)}`;
     b.onclick = () => setAnchor(k);
     return b;
   }));
@@ -677,7 +713,7 @@ function setHover(i, clientX, clientY) {
   } else {
     const short = t => esc(t.length > 18 ? t.slice(0, 17) + '…' : t);
     body = `<table class="t-table"><thead><tr><th></th>${state.pages.map(p =>
-      `<th><span class="swatch" style="background:var(--page-${p.color + 1})"></span>${short(p.page.title)}</th>`).join('')}</tr></thead><tbody>${
+      `<th><span class="swatch" style="background:var(--page-${p.color + 1})"></span>${short(pageName(p))}</th>`).join('')}</tr></thead><tbody>${
       ROWS.map(([label, f, sub]) => `<tr${sub ? ' class="t-sub"' : ''}><td>${label}</td>${tl.series.map(bins => `<td>${f(bins[i])}</td>`).join('')}</tr>`).join('')
     }</tbody></table>`;
   }
@@ -763,7 +799,7 @@ function renderTable() {
     `<tr><td>${fmtPeriod(b.start, tl.granularity)}</td>${tl.series.map(bins => cols(bins[i])).join('')}</tr>`);
   const sub = '<th>Edits</th><th>Editors</th><th>Edits per editor</th><th>~Word count at end</th>';
   const head = multi
-    ? `<tr><th></th>${state.pages.map(p => `<th colspan="4" class="t-page"><span class="swatch" style="background:var(--page-${p.color + 1})"></span>${esc(p.page.title)}</th>`).join('')}</tr>
+    ? `<tr><th></th>${state.pages.map(p => `<th colspan="4" class="t-page"><span class="swatch" style="background:var(--page-${p.color + 1})"></span>${esc(pageName(p))}</th>`).join('')}</tr>
        <tr><th>Period (UTC)</th>${state.pages.map(() => sub).join('')}</tr>`
     : `<tr><th>Period (UTC)</th>${sub}</tr>`;
   el.tlTable.innerHTML = `<thead>${head}</thead><tbody>${rows.join('')}</tbody>`;
@@ -776,8 +812,8 @@ function download(name, text) {
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
-const slug = () => state.pages.map(p => p.page.title.replace(/[^\w-]+/g, '_')).join('-vs-');
-const titles = () => state.pages.map(p => p.page.title);
+const slug = () => state.pages.map(p => pageName(p).replace(/[^\w-]+/g, '_')).join('-vs-');
+const titles = () => state.pages.map(pageName);
 el.tlCsv.onclick = () => download(`${slug()}-edits-per-${tl.granularity}.csv`, timelineCsv(tl, titles()));
 el.usersCsv.onclick = () => download(`${slug()}-edits-per-user.csv`, usersCsv(shownRows, titles()));
 
@@ -809,13 +845,13 @@ function renderUsers() {
     const stats = `<b>mean</b> ${num(s.mean)} · <b>median</b> ${num(s.median)} · <b>mode</b> ${num(s.mode)}`;
     if (!multi) return `Edits per editor: ${stats}`;
     const edits = pageUsers[k].reduce((t, u) => t + u.edits, 0);
-    return `<div>${swatch(k)}<b>${esc(p.page.title)}</b>: ${fmtInt(edits)} edits by ${fmtInt(pageUsers[k].length)} editors `
+    return `<div>${swatch(k)}<b>${esc(pageName(p))}</b>: ${fmtInt(edits)} edits by ${fmtInt(pageUsers[k].length)} editors `
       + `(${subtotals(editorBreakdown(pageUsers[k], p.bots))}) · edits per editor: ${stats}</div>`;
   }).join('');
 
   const onAnchor = users.filter(r => r.per[a]).map(r => r.per[a]);
   const key = [];
-  if (multi) key.push(`Sorting and highlights use ${swatch(a)}<b>${esc(anchor.page.title)}</b>`);
+  if (multi) key.push(`Sorting and highlights use ${swatch(a)}<b>${esc(pageName(anchor))}</b>`);
   if (ulist.timeSort) {
     const when = state.sort === 'first' ? 'first edit' : 'last edit';
     key.push(`<span class="u-record">Bold</span>: most edits of anyone up to that ${when}`);
@@ -940,14 +976,10 @@ function syncUrl() {
 function initFromUrl() {
   const p = new URLSearchParams(location.search);
   const lang = p.get('lang') || 'en';
-  el.lang.value = lang;
-  const first = addSlot(p.get('page') || '');
-  for (const i of [2, 3]) {
+  const first = addSlot(p.get('page') || '', lang);
+  for (let i = 2; i <= MAX_PAGES; i++) {
     const t = p.get(`page${i}`);
-    if (!t) continue;
-    const s = addSlot(t);
-    const l = p.get(`lang${i}`);
-    if (l && l !== lang) s.input.value = `https://${l}.wikipedia.org/wiki/${encodeURIComponent(t.replace(/ /g, '_'))}`;
+    if (t) addSlot(t, p.get(`lang${i}`) || lang);
   }
   if (!p.get('page')) { first.input.focus(); return; }
   lookupAll({
@@ -956,7 +988,7 @@ function initFromUrl() {
     gran: GRANULARITIES.includes(p.get('g')) ? p.get('g') : undefined,
     sort: SORTS[p.get('sort')] ? p.get('sort') : undefined,
     dir: ['asc', 'desc'].includes(p.get('dir')) ? p.get('dir') : undefined,
-    anchor: ['2', '3'].includes(p.get('by')) ? +p.get('by') - 1 : undefined,
+    anchor: +p.get('by') >= 2 && +p.get('by') <= slots.length ? +p.get('by') - 1 : undefined,
     common: p.get('common') === '1' || undefined,
   });
 }
