@@ -204,6 +204,9 @@ th.t-page { text-align: center; }
 .users-compare { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 4px 0 12px; }
 .users-compare[hidden] { display: none; }
 #anchor-seg, #show-seg { flex-wrap: wrap; }
+.users-who { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0 0 12px; }
+.check { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); cursor: pointer; }
+.check input { margin: 0; min-height: 0; accent-color: var(--series-1); }
 #anchor-seg button[aria-checked="true"] .swatch { box-shadow: 0 0 0 1.5px #fff; }
 .users {
   font-size: 13px;

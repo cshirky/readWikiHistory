@@ -44,6 +44,9 @@ left out because they're 1 on nearly every page, and names any page here where t
 - In the first-edit and last-edit sorts:
   - **Bold:** the user set a new high for total edits up to that point. Ties don't count.
   - **Underlined:** the user with the most edits in the page's whole history.
+- **Logged-in users only** hides bots, IP addresses and hidden usernames; **Bots only** shows just
+  bots. Ticking one unticks the other. They combine with Show when comparing, whose counts follow
+  them, and the CSV download follows both.
 - Rows load as you scroll. There's a CSV download.
 
 ## Using it
@@ -68,7 +71,8 @@ left out because they're 1 on nearly every page, and names any page here where t
   - Under the name of anyone who edited more than one page: their rank by edits on each of those
     pages, e.g. "#6 of 282 on Clay Shirky". Ties share a rank.
   - In a Total edits sort, the sort page's line shows only its bullet, and its rank line is left
-    out because the row number gives it. With Show filtering the list, that rank line comes back.
+    out because the row number gives it. With Show or a checkbox filtering the list, that rank line
+    comes back.
   - **Sort using**, above the chart, picks which page drives the sort and the name marks (page 1 by
     default). Users who never edited that page go last. Each page's creator is tagged on that
     page's line.
@@ -92,6 +96,7 @@ left out because they're 1 on nearly every page, and names any page here where t
   | `g` | `hour`, `day`, `week`, `month` or `year` (omitted for Auto) |
   | `sort`, `dir` | `edits`, `first`, `last` or `duration`; `asc` or `desc` |
   | `by` | `2` to `5` to sort the per-user chart using that page |
+  | `who` | `people` (logged-in users only) or `bots` (bots only) |
   | `show` | `shared` (edited 2+ pages) or `every` (edited all pages); older links' `common=1` means `every` |
 
 ## Notes on the numbers

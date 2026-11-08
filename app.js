@@ -31,7 +31,7 @@ const el = {
   tlTitle: $('tl-title'), tlLegend: $('tl-legend'), tlWrap: $('tl-wrap'), tlCanvas: $('tl-canvas'), brush: $('tl-brush'), tip: $('tl-tip'),
   wordsWrap: $('words-wrap'), wordsCanvas: $('words-canvas'),
   tlTable: $('tl-table'), tlCsv: $('tl-csv'), tableView: document.querySelector('.table-view'),
-  anchorSeg: $('anchor-seg'), usersCompare: $('users-compare'), showSeg: $('show-seg'), pagesNote: $('pages-note'), users: $('users'), usersSub: $('users-sub'), sortSeg: $('sort-seg'), dirBtn: $('dir-btn'),
+  anchorSeg: $('anchor-seg'), usersCompare: $('users-compare'), showSeg: $('show-seg'), whoPeople: $('who-people'), whoBots: $('who-bots'), pagesNote: $('pages-note'), users: $('users'), usersSub: $('users-sub'), sortSeg: $('sort-seg'), dirBtn: $('dir-btn'),
   usersKey: $('users-key'), usersEnd: $('users-end'), usersCsv: $('users-csv'),
 };
 
@@ -43,6 +43,7 @@ const state = {
   gran: 'auto',
   sort: 'edits', dir: null,
   anchor: 0,           // which page the per-user chart sorts and highlights by
+  who: null,           // per-user chart: null, 'people' (logged-in, not bots) or 'bots'
   show: 'all',         // per-user chart: 'all' editors, 'shared' (edited 2+ pages) or 'every' (edited all pages)
   hover: -1,
 };
@@ -318,6 +319,7 @@ async function loadAll(ctrl, initial) {
     state.dir = initial.dir ?? null;
     state.anchor = initial.anchor ?? 0;
     state.show = initial.show ?? 'all';
+    state.who = initial.who ?? null;
   }
   want.forEach(({ s }, i) => {
     s.input.value = datas[i].page.title;
@@ -361,6 +363,7 @@ function renderAll() {
   pageUsers = state.pages.map(p => buildUsers(p.revisions, { start, end }));
   users = sortCombined(combineUsers(pageUsers), state.sort, state.dir, state.anchor);
   pageRanks = pageUsers.map(rankByEdits);
+  ulist.bots = new Set(state.pages.flatMap(p => [...p.bots]));
   state.hover = -1;
 
   renderControls();
@@ -429,12 +432,15 @@ function renderControls() {
   const multi = state.pages.length > 1;
   el.usersCompare.hidden = !multi;
   const n = state.pages.length;
-  const count = f => fmtInt(users.filter(f).length);
+  const pool = byWho(users); // counts follow the logged-in / bots checkboxes
+  const count = f => fmtInt(pool.filter(f).length);
   const shows = [
-    ['all', `All editors (${fmtInt(users.length)})`],
+    ['all', `All editors (${fmtInt(pool.length)})`],
     ['shared', `Edited 2+ pages (${count(r => r.per.filter(Boolean).length > 1)})`],
     ...(n > 2 ? [['every', `Edited all ${n} pages (${count(r => r.per.every(Boolean))})`]] : []),
   ];
+  el.whoPeople.checked = state.who === 'people';
+  el.whoBots.checked = state.who === 'bots';
   el.showSeg.replaceChildren(...(multi ? shows : []).map(([key, label]) => {
     const b = document.createElement('button');
     b.type = 'button';
@@ -458,6 +464,19 @@ function renderControls() {
 }
 
 // With two pages, "edited all pages" is the same as "edited 2+ pages".
+// Logged-in users only / Bots only: ticking one unticks the other.
+const isBotRow = r => !r.hidden && ulist.bots.has(r.user);
+const isPersonRow = r => !r.hidden && !r.anon && !ulist.bots.has(r.user);
+const byWho = rows => (state.who === 'people' ? rows.filter(isPersonRow) : state.who === 'bots' ? rows.filter(isBotRow) : rows);
+for (const [box, who] of [[el.whoPeople, 'people'], [el.whoBots, 'bots']]) {
+  box.onchange = () => {
+    state.who = box.checked ? who : null;
+    renderControls();
+    renderUsers();
+    syncUrl();
+  };
+}
+
 const showMode = () => (state.show === 'every' && state.pages.length === 2 ? 'shared' : state.show);
 
 // Rank each editor by edits on one page; ties share a rank (1, 2, 2, 4).
@@ -925,12 +944,11 @@ function renderUsers() {
   const anchor = state.pages[a];
   ulist.shown = 0;
   const mode = multi ? showMode() : 'all';
-  shownRows = mode === 'every' ? users.filter(r => r.per.every(Boolean))
-    : mode === 'shared' ? users.filter(r => r.per.filter(Boolean).length > 1) : users;
+  shownRows = byWho(mode === 'every' ? users.filter(r => r.per.every(Boolean))
+    : mode === 'shared' ? users.filter(r => r.per.filter(Boolean).length > 1) : users);
   ulist.max = pageUsers.flat().reduce((m, u) => Math.max(m, u.edits), 1); // one scale for every page
   ulist.timeSort = state.sort === 'first' || state.sort === 'last'; // bold/underline apply to date sorts only
   ulist.records = ulist.timeSort ? recordHolders(pageUsers[a], state.sort) : new Set();
-  ulist.bots = new Set(state.pages.flatMap(p => [...p.bots]));
   ulist.creators = state.pages.map(p => p.revisions[0].user);
 
   const onAnchor = users.filter(r => r.per[a]).map(r => r.per[a]);
@@ -1015,7 +1033,7 @@ function userRow(r, i) {
   // In an edits sort the sort page's line drops its page name (it's named above the chart), and,
   // unless Show filters the list, its rank too: the row's place already gives it.
   const plain = k => state.sort === 'edits' && k === state.anchor;
-  const rankShown = k => !plain(k) || showMode() !== 'all';
+  const rankShown = k => !plain(k) || showMode() !== 'all' || state.who;
   const subs = order.filter(k => r.per[k]).map(k =>
     `<div class="u-sub${k === state.anchor ? ' u-anchor' : ''}">${statCells(r.per[k], k, !plain(k))}</div>`).join('');
   // Editors of more than one page: their rank by edits on each page they edited, in line order.
@@ -1035,7 +1053,7 @@ function appendUsers() {
   el.users.insertAdjacentHTML('beforeend', batch.map((u, j) => userRow(u, ulist.shown + j)).join(''));
   ulist.shown += batch.length;
   const n = shownRows.length;
-  el.usersEnd.textContent = !n ? `No editor edited ${showMode() === 'every' ? 'every page' : 'more than one page'} in this range`
+  el.usersEnd.textContent = !n ? 'No editors match these filters in this range'
     : ulist.shown < n ? `Showing ${fmtInt(ulist.shown)} of ${fmtInt(n)} — scroll for more`
     : `All ${fmtInt(n)} editors shown`;
   // The observer only fires on changes, so keep filling while the end marker is still in view.
@@ -1065,6 +1083,7 @@ function syncUrl() {
   if (state.dir) p.set('dir', state.dir);
   if (state.anchor) p.set('by', String(state.anchor + 1));
   if (state.pages.length > 1 && showMode() !== 'all') p.set('show', showMode());
+  if (state.who) p.set('who', state.who);
   history.replaceState(null, '', `?${p}`);
 }
 
@@ -1084,6 +1103,7 @@ function initFromUrl() {
     sort: SORTS[p.get('sort')] ? p.get('sort') : undefined,
     dir: ['asc', 'desc'].includes(p.get('dir')) ? p.get('dir') : undefined,
     anchor: +p.get('by') >= 2 && +p.get('by') <= slots.length ? +p.get('by') - 1 : undefined,
+    who: ['people', 'bots'].includes(p.get('who')) ? p.get('who') : undefined,
     show: ['shared', 'every'].includes(p.get('show')) ? p.get('show') : p.get('common') === '1' ? 'every' : undefined,
   });
 }
