@@ -4,7 +4,7 @@ Charts the edit history of a Wikipedia page, or compares up to five pages side b
 were edited, how big they grew, and who edited them.
 
 **Live:** https://cshirky.github.io/readWikiHistory/
-(example comparison: https://cshirky.github.io/readWikiHistory/?page=Clay%20Shirky&page2=Cory%20Doctorow&page3=Yochai%20Benkler)
+(example comparison: https://cshirky.github.io/readWikiHistory/?page=Elinor%20Ostrom&page2=Oliver%20E.%20Williamson&page3=Douglass%20North)
 
 It's a static page with no dependencies and no build step. Revision data comes straight from the
 [MediaWiki API](https://www.mediawiki.org/wiki/API:Revisions) in your browser, so there's no server.
@@ -21,7 +21,8 @@ left out because they're 1 on nearly every page, and names any page here where t
 
 **Edit timeline.**
 - A column chart of edits per hour, day, week, month or year.
-- Below it, a line chart of the page's approximate word count at the end of each period.
+- A line overlaid on the columns shows the page's approximate word count at the end of each period,
+  read on the right-hand axis. **Hide word count** / **Show word count** toggles it.
 - Hovering a period shows edits, editors (with subtotals for bots, IP addresses and hidden
   usernames), average edits per editor, and the word count.
 - A table view and a CSV download hold the same numbers.
@@ -61,15 +62,15 @@ left out because they're 1 on nearly every page, and names any page here where t
   - The "Compare to 1–4 additional pages or languages" list sets how many search boxes there are, up
     to five pages in all. Lowering it drops empty boxes first, then the last ones. × removes one box.
   - To compare languages, enter the same title in two boxes and pick a different language in each.
-    When the pages span more than one language, labels add the language code, e.g. "Clay Shirky (de)".
+    When the pages span more than one language, labels add the language code, e.g. "Elinor Ostrom (de)".
   - Each page keeps a colour: page 1 blue, page 2 orange, page 3 aqua, page 4 yellow, page 5 magenta.
-  - The column chart puts the pages' columns side by side in each period, and the line chart draws
+  - The column chart puts the pages' columns side by side in each period, and the word-count overlay draws
     one line per page. The hover shows the pages in columns.
   - The per-user chart lists every editor of any of the pages. Each name gets one line per page
     they edited, labelled with the page's name and coloured bullet: the sort page's line first,
     then the others in page order. All bars share one scale.
   - Under the name of anyone who edited more than one page: their rank by edits on each of those
-    pages, e.g. "#6 of 282 on Clay Shirky". Ties share a rank.
+    pages, e.g. "#6 of 282 on Elinor Ostrom". Ties share a rank.
   - In a Total edits sort, the sort page's line shows only its bullet, and its rank line is left
     out because the row number gives it. With Show or a checkbox filtering the list, that rank line
     comes back.
@@ -102,7 +103,7 @@ left out because they're 1 on nearly every page, and names any page here where t
 ## Notes on the numbers
 
 - All times are UTC. Weeks start on Monday.
-- **~Word count** is the page size in bytes divided by 6, after the last edit at or before the end of
+- **~Word count** is the page size in bytes divided by 6, rounded to the nearest 100, after the last edit at or before the end of
   the period. It carries forward through periods with no edits. It's rough: wikitext markup and
   references count toward the bytes.
 - Edits with suppressed usernames can't be told apart, so they're grouped as one
@@ -114,7 +115,7 @@ left out because they're 1 on nearly every page, and names any page here where t
 
 ```sh
 npm run serve            # python3 -m http.server 8000
-# open http://localhost:8000/?page=Clay%20Shirky
+# open http://localhost:8000/?page=Elinor%20Ostrom
 ```
 
 GitHub Pages serves the `main` branch root, so pushing to `main` deploys the site.

@@ -46,17 +46,14 @@
       <figure class="card">
         <figcaption>
           <h3 id="tl-title">Edits</h3>
-          <p class="muted small">Drag across the chart to zoom to a range · click a column to open that page’s Wikipedia history from that period</p>
+          <p class="muted small">Drag across the chart to zoom to a range · the line is ~word count (bytes ÷ 6, to the nearest 100), read on the right-hand axis · click a column to open that page’s Wikipedia history from that period</p>
           <div class="legend" id="tl-legend" hidden></div>
+          <button type="button" class="ghost small" id="words-toggle" aria-pressed="true">Hide word count</button>
         </figcaption>
         <div class="chart-wrap" id="tl-wrap">
           <canvas id="tl-canvas" aria-label="Column chart of edits per period"></canvas>
           <div class="brush" id="tl-brush" hidden></div>
           <div class="tooltip" id="tl-tip" hidden></div>
-        </div>
-        <h4 class="strip-title">~Word count at end of period <span class="muted">(bytes ÷ 6)</span></h4>
-        <div class="chart-wrap strip" id="words-wrap">
-          <canvas id="words-canvas" aria-label="Approximate word count at end of each period"></canvas>
         </div>
         <details class="table-view">
           <summary>Table: edits and ~word count per period</summary>

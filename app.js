@@ -36,6 +36,7 @@ const el = {
 };
 
 const state = {
+  showWords: true,
   pages: [],           // loaded pages: { page, revisions, bots, allTimeTop, color }
   get data() { return this.pages[0]; }, // page 1, the default for anything not yet per-page
   fullStart: 0, fullEnd: 0,
@@ -127,7 +128,7 @@ function showSlotInfo(slot, { page, revisions, bots }) {
   const line2 = [
     `Created ${fmtDate(created)}`,
     `Article is ${fmtAge(created, Date.now())} old`,
-    `~word count ${fmtInt(Math.round(approxWords(revisions.at(-1).size) / 100) * 100)}`,
+    `~word count ${fmtInt(approxWords(revisions.at(-1).size))}`,
   ].join(' · ');
   slot.info.innerHTML = `<p>${line1}<button type="button" class="ghost small change">Change</button></p>
     <p class="muted slot-created">${line2}</p>`;
@@ -535,7 +536,7 @@ function fromLocalInput(v, endOfMinute = false) {
 
 // ------------------------------------------------------------------ canvas charts
 
-const M = { l: 56, r: 14, t: 18, b: 28 };
+const M = { l: 56, get r() { return state.showWords ? 56 : 14; }, t: 18, b: 28 };
 const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
 function setupCanvas(canvas) {
@@ -597,7 +598,6 @@ function timeTicks(sx) {
 
 function drawCharts() {
   drawTimeline();
-  drawWords();
 }
 
 // Where period i's columns sit: the first column's left edge, column width and the gap between pages.
@@ -664,6 +664,8 @@ function drawTimeline() {
   ctx.fillStyle = css('--axis');
   ctx.fillRect(M.l, M.t + h, sx.w, 1);
 
+  if (state.showWords) drawWordsOverlay(ctx, sx, h, n);
+
   // direct label on the peak only
   if (n === 1 && maxIdx >= 0 && maxEdits > 0) {
     const b = tl.bins[maxIdx];
@@ -690,28 +692,23 @@ function drawTimeline() {
   }
 }
 
-function drawWords() {
-  const { ctx, width, height } = setupCanvas(el.wordsCanvas);
-  const sx = xScale(width);
-  const top = 10, bottom = 4;
-  const h = height - top - bottom;
-  const n = tl.series.length;
+// Word-count step lines overlaid on the edits columns, read against the right-hand axis.
+// Each value holds across its period and is the size at the period's end.
+function drawWordsOverlay(ctx, sx, h, n) {
   const vals = tl.series.flatMap(bins => bins.map(b => b.words)).filter(v => v != null);
-  const ys = niceScale(vals.reduce((m, v) => Math.max(m, v), 0), 2);
-  const y = v => top + h - (v / ys.max) * h;
+  if (!vals.length) return;
+  const ws = niceScale(vals.reduce((m, v) => Math.max(m, v), 0), 4);
+  const y = v => M.t + h - (v / ws.max) * h;
+  const lineColor = k => (n === 1 ? css('--size-line') : pageColor(state.pages[k].color));
+
   ctx.font = `11px ${css('--font')}`;
   ctx.textBaseline = 'middle';
-  ctx.textAlign = 'right';
-  for (const v of [0, ys.max]) {
-    ctx.fillStyle = css('--grid');
-    ctx.fillRect(M.l, Math.round(y(v)), sx.w, 1);
-    ctx.fillStyle = css('--text-muted');
-    ctx.fillText(compact(v), M.l - 8, y(v));
-  }
+  ctx.textAlign = 'left';
+  ctx.fillStyle = css('--text-muted');
+  for (const v of ws.ticks) ctx.fillText(compact(v), M.l + sx.w + 8, y(v));
+  ctx.textBaseline = 'bottom';
+  ctx.fillText('~words', M.l + sx.w + 8, M.t - 5);
 
-  // Step lines: each value holds across its period and is the size at the period's end.
-  // One page keeps the grey line and wash; several pages each get their colour, no wash.
-  const lineColor = k => (n === 1 ? css('--size-line') : pageColor(state.pages[k].color));
   tl.series.forEach((bins, k) => {
     const segs = [];
     let cur = null;
@@ -721,42 +718,31 @@ function drawWords() {
       cur.push([sx.x(b.start), y(b.words)], [sx.x(b.end), y(b.words)]);
     }
     for (const pts of segs) {
-      if (n === 1) {
-        ctx.beginPath();
-        ctx.moveTo(pts[0][0], y(0));
-        for (const [px, py] of pts) ctx.lineTo(px, py);
-        ctx.lineTo(pts.at(-1)[0], y(0));
-        ctx.closePath();
-        ctx.fillStyle = css('--size-wash');
-        ctx.fill();
-      }
       ctx.beginPath();
       pts.forEach(([px, py], i) => (i ? ctx.lineTo(px, py) : ctx.moveTo(px, py)));
-      ctx.strokeStyle = lineColor(k);
-      ctx.lineWidth = 2;
       ctx.lineJoin = 'round';
       ctx.lineCap = 'round';
+      // a surface-coloured halo keeps the line readable over same-coloured columns
+      ctx.strokeStyle = css('--surface-1');
+      ctx.lineWidth = 4.5;
+      ctx.stroke();
+      ctx.strokeStyle = lineColor(k);
+      ctx.lineWidth = 2;
       ctx.stroke();
     }
-  });
-
-  if (state.hover >= 0) {
-    const b = tl.bins[state.hover];
-    const cx = (sx.x(b.start) + sx.x(b.end)) / 2;
-    ctx.fillStyle = css('--hover-band');
-    ctx.fillRect(sx.x(b.start), top, Math.max(1, sx.x(b.end) - sx.x(b.start)), h);
-    tl.series.forEach((bins, k) => {
-      const v = bins[state.hover].words;
-      if (v == null) return;
+    if (state.hover >= 0) {
+      const b = bins[state.hover];
+      if (b.words == null) return;
+      const cx = (sx.x(tl.bins[state.hover].start) + sx.x(tl.bins[state.hover].end)) / 2;
       ctx.beginPath();
-      ctx.arc(cx, y(v), 4, 0, Math.PI * 2);
+      ctx.arc(cx, y(b.words), 4, 0, Math.PI * 2);
       ctx.fillStyle = lineColor(k);
       ctx.strokeStyle = css('--surface-1');
       ctx.lineWidth = 2;
       ctx.fill();
       ctx.stroke();
-    });
-  }
+    }
+  });
 }
 
 // ------------------------------------------------------------------ chart interaction
@@ -775,7 +761,6 @@ function binAt(clientX, canvas) {
 }
 
 // Which page's column in period i is nearest the pointer: columns with edits first.
-// The word-count strip has no columns, so there it only answers when there's one page.
 function pageAt(i, clientX, canvas) {
   const n = tl.series.length;
   if (i < 0) return -1;
@@ -814,7 +799,7 @@ function setHover(i, clientX, clientY, canvas = el.tlCanvas) {
     ['IP addresses', x => fmtInt(x.ips), true],
     ['hidden usernames', x => fmtInt(x.hidden), true],
     ['Avg edits per editor', perEditor],
-    ['~Word count at end', x => fmtInt(x.words)],
+    ...(state.showWords ? [['~Word count at end', x => fmtInt(x.words)]] : []),
   ];
   let body;
   if (tl.series.length === 1) {
@@ -840,12 +825,12 @@ function setHover(i, clientX, clientY, canvas = el.tlCanvas) {
   el.tip.style.top = `${Math.max(8, clientY - card.top - th - 12)}px`;
 }
 
-// The tooltip lives on the card so it can follow the pointer over both charts.
+// The tooltip lives on the card so it can follow the pointer.
 el.tlWrap.closest('.card').style.position = 'relative';
 el.tlWrap.closest('.card').appendChild(el.tip);
 
 let drag = null;
-for (const canvas of [el.tlCanvas, el.wordsCanvas]) {
+for (const canvas of [el.tlCanvas]) {
   canvas.addEventListener('pointerdown', e => {
     if (!tl || e.button !== 0) return;
     drag = { canvas, x0: e.clientX, moved: false };
@@ -892,6 +877,13 @@ function zoomTo(start, end) {
   state.gran = 'auto';
   setRange(Math.max(start, state.fullStart), Math.min(end, state.fullEnd));
 }
+
+el.wordsToggle.addEventListener('click', () => {
+  state.showWords = !state.showWords;
+  el.wordsToggle.textContent = state.showWords ? 'Hide word count' : 'Show word count';
+  el.wordsToggle.setAttribute('aria-pressed', String(state.showWords));
+  if (tl) drawCharts();
+});
 
 new ResizeObserver(() => tl && drawCharts()).observe(el.tlWrap);
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => tl && drawCharts());
