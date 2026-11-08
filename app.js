@@ -29,7 +29,7 @@ const el = {
   results: $('results'),
   granSeg: $('gran-seg'), start: $('start-input'), end: $('end-input'), reset: $('reset-btn'),
   tlTitle: $('tl-title'), tlLegend: $('tl-legend'), tlWrap: $('tl-wrap'), tlCanvas: $('tl-canvas'), brush: $('tl-brush'), tip: $('tl-tip'),
-  wordsWrap: $('words-wrap'), wordsCanvas: $('words-canvas'),
+  wordsToggle: $('words-toggle'),
   tlTable: $('tl-table'), tlCsv: $('tl-csv'), tableView: document.querySelector('.table-view'),
   anchorSeg: $('anchor-seg'), usersCompare: $('users-compare'), showSeg: $('show-seg'), whoPeople: $('who-people'), whoBots: $('who-bots'), pagesNote: $('pages-note'), users: $('users'), usersSub: $('users-sub'), sortSeg: $('sort-seg'), dirBtn: $('dir-btn'),
   usersKey: $('users-key'), usersEnd: $('users-end'), usersCsv: $('users-csv'),
